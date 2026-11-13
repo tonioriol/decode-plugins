@@ -69,6 +69,7 @@ digest='0'*64 if os.environ.get('BAD_CHECKSUM') else hashlib.sha256(binary).hexd
         self.assertEqual(args[args.index('--folder') + 1], '.')
         self.assertNotIn('--scan', args)
         self.assertEqual(self.shared.read_bytes(), FAKE_BINARY)
+        self.assertEqual(list((Path(self.env['CLAUDE_PLUGIN_DATA']) / 'releases/v0.1.0').glob('download.*')), [])
         self.assertIn("'--repo', 'tonioriol/decode-plugins'", self.log.read_text())
         self.assertIn("'v0.1.0'", self.log.read_text())
         self.assertEqual(self.run_server(AUTH_FAIL='1', DOWNLOAD_FAIL='1').returncode, 0)

@@ -62,6 +62,8 @@ PY
   chmod 755 "$stage/$asset"
   # Immutable, checksummed release: concurrent installs atomically publish identical bytes.
   mv -f "$stage/$asset" "$binary"
+  rm -rf "$stage"
+  trap - EXIT
 fi
 mkdir -p "$(dirname "$shared")"
 published=$(mktemp "$(dirname "$shared")/.semantic-mcp.XXXXXX")
