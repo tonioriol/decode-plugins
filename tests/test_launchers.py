@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -147,6 +148,21 @@ digest='0'*64 if os.environ.get('BAD_CHECKSUM') else hashlib.sha256(binary).hexd
             args = json.loads(result.stdout)
             stores.append(args[args.index('--storage') + 1])
         self.assertNotEqual(stores[0], stores[1])
+
+    def test_codex_manifests_launch_from_installed_cache_and_preserve_project(self):
+        codex_home = self.root / 'codex home with spaces'
+        for plugin in ('semantic-search', 'memory'):
+            source = ROOT / 'plugins' / plugin
+            manifest = json.loads((source / '.codex-plugin/plugin.json').read_text())
+            installed = codex_home / 'plugins/cache/decode-plugins' / plugin / manifest['version']
+            shutil.copytree(source, installed)
+            server = manifest['mcpServers'][plugin]
+            result = subprocess.run([server['command'], *server.get('args', [])], cwd=self.project,
+                                    env=dict(self.env, CODEX_HOME=str(codex_home)), text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            args = json.loads(result.stdout)
+            self.assertEqual(args[args.index('--project') + 1], str(self.project))
+            self.assertEqual(args[args.index('--tool') + 1], 'search' if plugin == 'memory' else 'project_search')
 
     def test_concurrent_downloads_publish_complete_binary(self):
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:

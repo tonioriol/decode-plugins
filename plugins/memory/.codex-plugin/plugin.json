@@ -1,11 +1,15 @@
 {
   "name": "memory",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Durable project notes, recall, and lifecycle reminders.",
   "mcpServers": {
     "memory": {
       "type": "stdio",
-      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/server.sh"
+      "command": "bash",
+      "args": [
+        "-c",
+        "exec \"${CODEX_HOME:-$HOME/.codex}/plugins/cache/decode-plugins/memory/0.1.1/scripts/server.sh\""
+      ]
     }
   },
   "skills": "./skills",

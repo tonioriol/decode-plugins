@@ -51,6 +51,12 @@ The hooks require a Git repository containing the notes. Subagents report outcom
 
 Thin `.codex-plugin` manifests reuse the same MCP launchers, workflow, and hook scripts; there is no second workflow copy. The separate marketplace schema is in [.agents/plugins/marketplace.json](.agents/plugins/marketplace.json).
 
+Codex CLI 0.163.0 does not expand plugin-root placeholders in native MCP
+declarations. Its thin adapter therefore invokes the exact versioned copy under
+`CODEX_HOME/plugins/cache/decode-plugins/<plugin>/<version>/` (default
+`~/.codex`). This documented cache layout keeps the server's working directory
+at the current project rather than changing it to the plugin installation.
+
 ```sh
 codex plugin marketplace add tonioriol/decode-plugins
 codex plugin add semantic-search@decode-plugins
@@ -59,7 +65,7 @@ codex plugin add memory@decode-plugins
 
 Codex does not use the Claude dependency declaration, so install both explicitly. Set `DECODE_PLUGINS_SCAN_ROOT` and `DECODE_PLUGINS_SCAN_ROOT_2` in the Codex process environment for optional additional roots; the default is still current-project only. `CLAUDE_PLUGIN_DATA` is optional outside Claude; the launcher then uses the standard user cache directory.
 
-Codex requires review of each exact hook definition. Do not copy trust hashes between machines or permanently bypass hook trust. The adapter uses the legacy native hook manifest because the portable plugin loader does not provide the same lifecycle behavior. Validate native hook loading with the installed Codex version before relying on compaction blocking. Codex PreCompact uses `continue: false` and `stopReason`, stopping the turn before compaction instead of Claude's `decision: block` response.
+Codex requires review of each exact hook definition. Do not copy trust hashes between machines or permanently bypass hook trust. The adapter uses the native compatibility manifest and retains Codex's hook-trust checks. Validate native hook loading with the installed Codex version before relying on compaction blocking. Codex PreCompact uses `continue: false` and `stopReason`, stopping the turn before compaction instead of Claude's `decision: block` response.
 
 ## Development and verification
 
