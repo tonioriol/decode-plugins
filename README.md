@@ -23,7 +23,12 @@ The trial release provides **macOS Apple Silicon** only. Other systems receive a
 
 Both MCP servers search **only the current project by default**. Memory searches its `memory/` and `docs/` folders; semantic-search indexes source code. The engine applies ignore rules, including `.rooignore`, rejects symlinks, and limits indexed file size.
 
-Each plugin exposes optional directory options `scan_root` and `scan_root_2` under `/config`. Point these at parent directories containing projects to enable cross-project recall. Leave them empty for project-only scope. Configure each plugin separately; configuring memory does not change semantic-search. These are local user settings, never repository defaults.
+Each plugin exposes optional directory options `scan_root` and `scan_root_2` under `/config`. Leave them empty for project-only scope. Configure each plugin separately; configuring memory does not change semantic-search. These are local user settings, never repository defaults.
+
+- **semantic-search: broad scans index ALL SOURCE CODE** under the selected folder across its projects, subject to the engine's ignore and size rules. A cold search can take **minutes** while that code is embedded and indexed. Do not point it at a broad projects folder when you only want cross-project notes.
+- **memory: cheap cross-project NOTES scans** read only project `memory/` and `docs/` folders, not all source code. Parent directories containing many projects are suitable for this notes-only recall.
+
+The engine still warms its index eagerly. While a search waits, MCP clients that send a progress token receive project-folder and file indexing counts rather than a silent wait. Whether those messages are shown depends on the client; progress does not make a broad cold scan cheap.
 
 From a shell, the equivalent configuration interface is:
 
@@ -63,7 +68,7 @@ codex plugin add semantic-search@decode-plugins
 codex plugin add memory@decode-plugins
 ```
 
-Codex does not use the Claude dependency declaration, so install both explicitly. Set `DECODE_PLUGINS_SCAN_ROOT` and `DECODE_PLUGINS_SCAN_ROOT_2` in the Codex process environment for optional additional roots; the default is still current-project only. `CLAUDE_PLUGIN_DATA` is optional outside Claude; the launcher then uses the standard user cache directory.
+Codex does not use the Claude dependency declaration, so install both explicitly. Set `DECODE_PLUGINS_SCAN_ROOT` and `DECODE_PLUGINS_SCAN_ROOT_2` in the Codex process environment for optional additional roots; the default is still current-project only. `CLAUDE_PLUGIN_DATA` is optional outside Claude; the launcher then uses the standard user cache directory. The same scope warning applies: semantic-search scans ALL SOURCE CODE beneath those roots and a cold search can take minutes; memory performs cheap NOTES-only scans. Codex uses these environment variables rather than Claude's `userConfig` fields.
 
 Codex requires review of each exact hook definition. Do not copy trust hashes between machines or permanently bypass hook trust. The adapter uses the native compatibility manifest and retains Codex's hook-trust checks. Validate native hook loading with the installed Codex version before relying on compaction blocking. Codex PreCompact uses `continue: false` and `stopReason`, stopping the turn before compaction instead of Claude's `decision: block` response.
 
