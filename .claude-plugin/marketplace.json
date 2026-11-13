@@ -1,5 +1,5 @@
 {
-  "name": "agent-memory",
+  "name": "decode-plugins",
   "metadata": {
     "description": "Project memory and semantic search plugins."
   },

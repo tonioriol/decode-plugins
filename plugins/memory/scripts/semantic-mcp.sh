@@ -3,10 +3,10 @@
 set -euo pipefail
 release=v0.1.0
 repo=tonioriol/decode-plugins
-data=${CLAUDE_PLUGIN_DATA:-${XDG_CACHE_HOME:-$HOME/.cache}/agent-memory}
-shared="$HOME/.local/share/agent-memory/bin/semantic-mcp"
+data=${CLAUDE_PLUGIN_DATA:-${XDG_CACHE_HOME:-$HOME/.cache}/decode-plugins}
+shared="$HOME/.local/share/decode-plugins/bin/semantic-mcp"
 
-if [[ ${AGENT_MEMORY_PREFER_DECODE:-0} == 1 && ${AGENT_MEMORY_STANDALONE:-0} != 1 ]]; then
+if [[ ${DECODE_PLUGINS_PREFER_DECODE:-0} == 1 && ${DECODE_PLUGINS_STANDALONE:-0} != 1 ]]; then
   binary=$(python3 - <<'PY'
 import os, pathlib
 candidates = pathlib.Path.home().glob('.vscode/extensions/ultra.decode-*/dist/bin/decode')
@@ -19,7 +19,7 @@ PY
   fi
 fi
 
-if [[ ${AGENT_MEMORY_PREFER_DECODE:-0} == 1 && -x $shared ]]; then
+if [[ ${DECODE_PLUGINS_PREFER_DECODE:-0} == 1 && -x $shared ]]; then
   exec "$shared" --storage "$data/index" "$@"
 fi
 

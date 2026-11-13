@@ -1,6 +1,7 @@
-# agent-memory
+# Decode plugins
 
-Private Claude Code marketplace with two plugins:
+Marketplace for Decode companion plugins, with Claude Code plugins and
+thin Codex adapters. It currently contains two plugins:
 
 - **semantic-search** exposes `project_search` for source code.
 - **memory** adds a durable feature-note workflow, the `search` MCP tool over `memory/` and `docs/`, and SessionStart, Stop, and PreCompact hooks. It declares `dependencies: ["semantic-search"]`, so Claude installs both.
@@ -11,7 +12,7 @@ To install, run these two commands in Claude Code:
 
 ```text
 /plugin marketplace add tonioriol/decode-plugins
-/plugin install memory@agent-memory
+/plugin install memory@decode-plugins
 ```
 
 Use a recent Claude Code with plugin dependency and `userConfig` support. The historical launcher uses GitHub CLI to download its release binary. Install Bash and Python 3; the memory hooks also require Git, jq, and ripgrep.
@@ -27,10 +28,10 @@ Each plugin exposes optional directory options `scan_root` and `scan_root_2` und
 From a shell, the equivalent configuration interface is:
 
 ```sh
-printf '%s\n' '{"scan_root":"/path/to/projects"}' | claude plugin configure memory@agent-memory --values-stdin
+printf '%s\n' '{"scan_root":"/path/to/projects"}' | claude plugin configure memory@decode-plugins --values-stdin
 ```
 
-Downloaded binaries and indexes live in `CLAUDE_PLUGIN_DATA`, which survives plugin updates. The verified standalone executable is also atomically published at `~/.local/share/agent-memory/bin/semantic-mcp` for sharing between plugins. Memory first detects the newest executable in a standard Decode VS Code extension installation; otherwise it uses the shared standalone executable, downloading the pinned release if needed. Semantic-search always uses the standalone release. `AGENT_MEMORY_STANDALONE=1` disables Decode detection for isolated verification.
+Downloaded binaries and indexes live in `CLAUDE_PLUGIN_DATA`, which survives plugin updates. The verified standalone executable is also atomically published at `~/.local/share/decode-plugins/bin/semantic-mcp` for sharing between plugins. Memory first detects the newest executable in a standard Decode VS Code extension installation; otherwise it uses the shared standalone executable, downloading the pinned release if needed. Semantic-search always uses the standalone release. `DECODE_PLUGINS_STANDALONE=1` disables Decode detection for isolated verification.
 
 The index is local to each plugin's data directory; no account, project notes, source files, or credentials are distributed with this repository. On first use, the engine may download its embedding model. Release downloads use `gh release download`, pin a version, and verify the release's SHA-256 checksum before execution. A checksum authenticates integrity relative to this release, not a separate signing identity.
 
@@ -52,11 +53,11 @@ Thin `.codex-plugin` manifests reuse the same MCP launchers, workflow, and hook 
 
 ```sh
 codex plugin marketplace add tonioriol/decode-plugins
-codex plugin add semantic-search@agent-memory
-codex plugin add memory@agent-memory
+codex plugin add semantic-search@decode-plugins
+codex plugin add memory@decode-plugins
 ```
 
-Codex does not use the Claude dependency declaration, so install both explicitly. Set `AGENT_MEMORY_SCAN_ROOT` and `AGENT_MEMORY_SCAN_ROOT_2` in the Codex process environment for optional additional roots; the default is still current-project only. `CLAUDE_PLUGIN_DATA` is optional outside Claude; the launcher then uses the standard user cache directory.
+Codex does not use the Claude dependency declaration, so install both explicitly. Set `DECODE_PLUGINS_SCAN_ROOT` and `DECODE_PLUGINS_SCAN_ROOT_2` in the Codex process environment for optional additional roots; the default is still current-project only. `CLAUDE_PLUGIN_DATA` is optional outside Claude; the launcher then uses the standard user cache directory.
 
 Codex requires review of each exact hook definition. Do not copy trust hashes between machines or permanently bypass hook trust. The adapter uses the legacy native hook manifest because the portable plugin loader does not provide the same lifecycle behavior. Validate native hook loading with the installed Codex version before relying on compaction blocking. Codex PreCompact uses `continue: false` and `stopReason`, stopping the turn before compaction instead of Claude's `decision: block` response.
 

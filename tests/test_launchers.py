@@ -59,7 +59,7 @@ digest='0'*64 if os.environ.get('BAD_CHECKSUM') else hashlib.sha256(binary).hexd
 
     @property
     def shared(self):
-        return self.home / '.local/share/agent-memory/bin/semantic-mcp'
+        return self.home / '.local/share/decode-plugins/bin/semantic-mcp'
 
     def test_download_checksum_cache_and_project_scope(self):
         result = self.run_server()
@@ -122,7 +122,7 @@ digest='0'*64 if os.environ.get('BAD_CHECKSUM') else hashlib.sha256(binary).hexd
     def test_scan_roots_are_single_arguments_without_shell_evaluation(self):
         roots = ['/projects/space here', '/projects/$(touch unwanted)']
         for plugin in ('semantic-search', 'memory'):
-            result = self.run_server(plugin, AGENT_MEMORY_SCAN_ROOT=roots[0], AGENT_MEMORY_SCAN_ROOT_2=roots[1])
+            result = self.run_server(plugin, DECODE_PLUGINS_SCAN_ROOT=roots[0], DECODE_PLUGINS_SCAN_ROOT_2=roots[1])
             self.assertEqual(result.returncode, 0, result.stderr)
             args = json.loads(result.stdout)
             self.assertEqual([args[i+1] for i, arg in enumerate(args) if arg == '--scan'], roots)
