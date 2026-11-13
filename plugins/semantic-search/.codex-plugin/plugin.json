@@ -1,6 +1,6 @@
 {
   "name": "semantic-search",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Semantic code search for the current project, with optional additional project roots.",
   "mcpServers": {
     "semantic-search": {
@@ -8,7 +8,17 @@
       "command": "bash",
       "args": [
         "-c",
-        "exec \"${CODEX_HOME:-$HOME/.codex}/plugins/cache/decode-plugins/semantic-search/0.1.1/scripts/server.sh\""
+        "exec \"${CODEX_HOME:-$HOME/.codex}/plugins/cache/decode-plugins/semantic-search/0.1.2/scripts/server.sh\""
+      ],
+      "env_vars": [
+        "CODEX_HOME",
+        "HOME",
+        "PATH",
+        "XDG_CACHE_HOME",
+        "GH_CONFIG_DIR",
+        "DECODE_PLUGINS_STANDALONE",
+        "DECODE_PLUGINS_SCAN_ROOT",
+        "DECODE_PLUGINS_SCAN_ROOT_2"
       ]
     }
   }

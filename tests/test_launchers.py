@@ -157,8 +157,12 @@ digest='0'*64 if os.environ.get('BAD_CHECKSUM') else hashlib.sha256(binary).hexd
             installed = codex_home / 'plugins/cache/decode-plugins' / plugin / manifest['version']
             shutil.copytree(source, installed)
             server = manifest['mcpServers'][plugin]
+            transport_env = dict(self.env)
+            transport_env.pop('CODEX_HOME', None)
+            if 'CODEX_HOME' in server.get('env_vars', []):
+                transport_env['CODEX_HOME'] = str(codex_home)
             result = subprocess.run([server['command'], *server.get('args', [])], cwd=self.project,
-                                    env=dict(self.env, CODEX_HOME=str(codex_home)), text=True, capture_output=True)
+                                    env=transport_env, text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             args = json.loads(result.stdout)
             self.assertEqual(args[args.index('--project') + 1], str(self.project))
