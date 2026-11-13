@@ -1,0 +1,13 @@
+{
+  "name": "memory",
+  "version": "0.1.0",
+  "description": "Durable project notes, recall, and lifecycle reminders.",
+  "mcpServers": {
+    "memory": {
+      "type": "stdio",
+      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/server.sh"
+    }
+  },
+  "skills": "./skills",
+  "hooks": "./hooks/codex.json"
+}

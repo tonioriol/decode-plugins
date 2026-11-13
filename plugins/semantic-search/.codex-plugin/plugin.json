@@ -1,0 +1,11 @@
+{
+  "name": "semantic-search",
+  "version": "0.1.0",
+  "description": "Semantic code search for the current project, with optional additional project roots.",
+  "mcpServers": {
+    "semantic-search": {
+      "type": "stdio",
+      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/server.sh"
+    }
+  }
+}

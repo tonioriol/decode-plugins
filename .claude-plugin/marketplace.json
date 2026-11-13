@@ -1,0 +1,19 @@
+{
+  "name": "agent-memory",
+  "metadata": {
+    "description": "Project memory and semantic search plugins."
+  },
+  "owner": {
+    "name": "tonioriol"
+  },
+  "plugins": [
+    {
+      "name": "semantic-search",
+      "source": "./plugins/semantic-search"
+    },
+    {
+      "name": "memory",
+      "source": "./plugins/memory"
+    }
+  ]
+}

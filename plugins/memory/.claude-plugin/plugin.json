@@ -1,0 +1,25 @@
+{
+  "name": "memory",
+  "version": "0.1.0",
+  "description": "Durable project notes, recall, and lifecycle reminders.",
+  "author": {
+    "name": "tonioriol"
+  },
+  "userConfig": {
+    "scan_root": {
+      "type": "directory",
+      "title": "Additional project root",
+      "description": "Optional parent directory to scan for additional projects. Empty means no additional scan.",
+      "default": ""
+    },
+    "scan_root_2": {
+      "type": "directory",
+      "title": "Second additional project root",
+      "description": "Optional parent directory to scan for additional projects. Empty means no additional scan.",
+      "default": ""
+    }
+  },
+  "dependencies": [
+    "semantic-search"
+  ]
+}

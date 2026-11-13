@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "memory": {
+      "type": "stdio",
+      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/server.sh",
+      "env": {
+        "AGENT_MEMORY_SCAN_ROOT": "${user_config.scan_root}",
+        "AGENT_MEMORY_SCAN_ROOT_2": "${user_config.scan_root_2}"
+      }
+    }
+  }
+}
