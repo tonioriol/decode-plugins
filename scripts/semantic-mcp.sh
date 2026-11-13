@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Canonical bootstrap; scripts/sync-launchers.py copies this into each plugin.
 set -euo pipefail
-release=v0.1.3
+release=v0.1.4
 repo=tonioriol/decode-plugins
 data=${CLAUDE_PLUGIN_DATA:-${XDG_CACHE_HOME:-$HOME/.cache}/decode-plugins}
 shared="$HOME/.local/share/decode-plugins/bin/semantic-mcp"

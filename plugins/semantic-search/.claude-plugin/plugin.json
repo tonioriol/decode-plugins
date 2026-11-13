@@ -1,7 +1,7 @@
 {
   "name": "semantic-search",
-  "version": "0.1.3",
-  "description": "Semantic code search for the current project. Optional scan roots index ALL SOURCE CODE beneath those folders; cold searches can take minutes, unlike cheap cross-project NOTES scans in memory.",
+  "version": "0.1.4",
+  "description": "Semantic code search for the current project by default. Optional scan roots index ALL SOURCE CODE, unlike memory's cheap NOTES scans. Broad cold scans can take minutes and use substantial disk space.",
   "author": {
     "name": "tonioriol"
   },
@@ -9,13 +9,13 @@
     "scan_root": {
       "type": "directory",
       "title": "Additional project root",
-      "description": "Optional folder to index ALL SOURCE CODE across its projects. A cold search can take minutes. Unlike memory, this is not a cheap cross-project NOTES scan. Leave empty for current-project-only search.",
+      "description": "Optional folder to index ALL SOURCE CODE, not a cheap cross-project NOTES scan. Cold searches can take minutes. Leave empty for current-project-only search.",
       "default": ""
     },
     "scan_root_2": {
       "type": "directory",
       "title": "Second additional project root",
-      "description": "Optional folder to index ALL SOURCE CODE across its projects. A cold search can take minutes. Unlike memory, this is not a cheap cross-project NOTES scan. Leave empty for current-project-only search.",
+      "description": "Optional folder to index ALL SOURCE CODE, not a cheap cross-project NOTES scan. Cold searches can take minutes. Leave empty for current-project-only search.",
       "default": ""
     }
   }

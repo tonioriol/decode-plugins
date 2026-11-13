@@ -1,6 +1,6 @@
 {
   "name": "memory",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Durable project notes, recall, and lifecycle reminders. Optional scan roots perform cheap cross-project NOTES scans (memory/ and docs/ only), not source-code indexing.",
   "mcpServers": {
     "memory": {
@@ -8,7 +8,7 @@
       "command": "bash",
       "args": [
         "-c",
-        "exec \"${CODEX_HOME:-$HOME/.codex}/plugins/cache/decode-plugins/memory/0.1.3/scripts/server.sh\""
+        "exec \"${CODEX_HOME:-$HOME/.codex}/plugins/cache/decode-plugins/memory/0.1.4/scripts/server.sh\""
       ],
       "env_vars": [
         "CODEX_HOME",
