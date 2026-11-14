@@ -58,8 +58,8 @@ The hooks require a Git repository containing the notes. Subagents report outcom
 
 Thin `.codex-plugin` manifests reuse the same MCP launchers, workflow, and hook scripts; there is no second workflow copy. The separate marketplace schema is in [.agents/plugins/marketplace.json](.agents/plugins/marketplace.json).
 
-Codex CLI 0.163.0 does not expand plugin-root placeholders in native MCP
-declarations. Its thin adapter therefore invokes the exact versioned copy under
+Codex CLI 0.169.0 is the tested native client. Native MCP declarations do not
+expand plugin-root placeholders. Its thin adapter therefore invokes the exact versioned copy under
 `CODEX_HOME/plugins/cache/decode-plugins/<plugin>/<version>/` (default
 `~/.codex`). This documented cache layout keeps the server's working directory
 at the current project rather than changing it to the plugin installation.
@@ -72,7 +72,52 @@ codex plugin add memory@decode-plugins
 
 Codex does not use the Claude dependency declaration, so install both explicitly. Set `DECODE_PLUGINS_SCAN_ROOT` and `DECODE_PLUGINS_SCAN_ROOT_2` in the Codex process environment for optional additional roots; the default is still current-project only. `CLAUDE_PLUGIN_DATA` is optional outside Claude; the launcher then uses the standard user cache directory. The same scope warning applies: semantic-search scans ALL SOURCE CODE beneath those roots; broad scans may take minutes and use substantial disk space. Memory performs cheap NOTES-only scans. Codex uses these environment variables rather than Claude's `userConfig` fields.
 
-Codex requires review of each exact hook definition. Do not copy trust hashes between machines or permanently bypass hook trust. The adapter uses the native compatibility manifest and retains Codex's hook-trust checks. Validate native hook loading with the installed Codex version before relying on compaction blocking. Codex PreCompact uses `continue: false` and `stopReason`, stopping the turn before compaction instead of Claude's `decision: block` response.
+### MCP approval
+
+The native manifests enable only the read-only `search` and `project_search` tools
+and ship `default_tools_approval_mode: "approve"`. In Codex 0.169 this means no
+approval prompt is required, so `codex exec` can call them even when its approval
+policy is `never`. The defaults belong to each server inside the native
+`mcpServers` declaration, not Claude's MCP configuration. Existing per-plugin
+user policy overrides these defaults.
+
+For an existing installation that needs an explicit local policy, the equivalent
+Codex configuration is:
+
+```toml
+[plugins."memory@decode-plugins".mcp_servers.memory]
+enabled = true
+enabled_tools = ["search"]
+default_tools_approval_mode = "approve"
+
+[plugins."semantic-search@decode-plugins".mcp_servers.semantic-search]
+enabled = true
+enabled_tools = ["project_search"]
+default_tools_approval_mode = "approve"
+```
+
+### Hook trust
+
+Codex requires review of each exact hook definition after installation or an
+update. In interactive Codex 0.169, run **`/hooks`**, select an event such as
+**SessionStart**, press **Enter**, select and review the memory plugin handler,
+then press **`t`** to trust it. Repeat for **Stop** and **PreCompact**. On the
+event-list screen, **`t` trusts all hooks needing review**; use that only after
+reviewing all of them. Trust preserves enabled/disabled state, so a disabled
+handler must also be enabled with Space or Enter. At startup, Codex may instead
+offer **Review hooks**, **Trust all and continue**, or **Continue without trusting**.
+
+Do not copy trust hashes between machines or permanently bypass hook trust.
+`--dangerously-bypass-hook-trust` is only for vetted, bounded automation; it is
+not the installation procedure. The adapter retains Codex's native trust checks.
+Codex PreCompact uses `continue: false` and `stopReason`, stopping the turn before
+compaction instead of Claude's `decision: block` response. Malformed hook input or
+transcripts fail open and emit a diagnostic on stderr rather than silently losing
+the reminder.
+
+Pinned implementation references: [native MCP fields](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/codex-mcp/src/plugin_config.rs#L155-L197),
+[approval meaning](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/core/src/mcp_tool_call.rs#L2772-L2784),
+and [`/hooks` dispatch](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/tui/src/chatwidget/slash_dispatch.rs#L537-L539).
 
 ## Development and verification
 
@@ -88,6 +133,14 @@ claude plugin validate plugins/semantic-search --strict
 ```
 
 [scripts/semantic-mcp.sh](scripts/semantic-mcp.sh) is the canonical release bootstrap. After editing it, run `python3 scripts/sync-launchers.py` to package identical copies into the independently cached plugin roots. The checker rejects stale copies. Launcher fixtures exercise authenticated download, caching, checksum rejection, concurrent startup, Decode preference, shared standalone fallback, and safe path/scan arguments. Hook fixtures use real Git commits and native transcript shapes.
+
+[The packaged memory hook](plugins/memory/hooks/flush-hooks.sh) is the canonical
+hook source. If it is also deployed into another local plugin, check that copy
+with `python3 scripts/check-memory-hook.py /path/to/deployed/flush-hooks.sh`.
+The check fails on byte drift; the native hook tests also accept
+`MEMORY_HOOK_UNDER_TEST` to exercise a deployed copy against the same rollout
+fixtures. Codex 0.169 code-mode work is detected from completed command and
+file-change events, never by executing or interpreting transcript JavaScript.
 
 For isolated installation, set `CLAUDE_CONFIG_DIR` and `CODEX_HOME` to disposable directories. Codex also discovers home-wide instructions independently of `CODEX_HOME`; use a disposable home when verifying that only packaged content loads. Never replace a real user configuration with a test fixture. [Release and source access](docs/building.md) documents the private-source build options and unsupported platforms. [Trial verification](docs/verification.md) records the tested versions, real runtime evidence, and remaining boundaries.
 
