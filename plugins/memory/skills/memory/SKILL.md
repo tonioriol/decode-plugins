@@ -152,8 +152,15 @@ rules) and let the LOG entry cite that commit.
 
 ## Operate
 ### Query
-Read matching memory first and answer from its verified current state. Resolve
-conflicting claims against evidence before relying on them.
+Search the notes first (the `search` tool, then the matching `context.md`) and
+answer from their verified current state, but only if they fully answer the
+question asked; a related note is not an answer. Otherwise search earlier
+conversations before answering or saying it is not recorded: use the harness's
+own past-chat search (it may call them agents, sessions or tasks); if it has
+none, errors or finds nothing, grep its saved session transcripts on disk
+(transcript folders are hidden and often git-ignored, so `rg` skips them: use
+`grep -r` or `rg --no-ignore --hidden`). Resolve conflicting claims against
+evidence before relying on them.
 
 ### Create
 Create memory for substantial work needing cross-session continuity. Record the

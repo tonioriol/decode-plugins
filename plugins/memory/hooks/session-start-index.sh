@@ -12,7 +12,7 @@ cwd=$(jq -r '.cwd // empty' <<<"$input")
 feat="$cwd/memory"
 [[ -d $feat ]] || exit 0
 
-echo "Feature memory lives in memory/ (memory skill): read the matching context.md before resuming related work; the memory search tool finds notes in the current project and any configured scan roots. When you resume a feature, set its status to active; when you stop, leave it active only if work continues, otherwise paused or done. When a durable result settles (diagnosis, decision, verified fix, measurement), update the feature's context.md and commit it. Commits, pushes and installs alone are not entries. Subagents report instead of flushing."
+echo "Feature memory lives in memory/ (memory skill): read the matching context.md before resuming related work; the memory search tool finds notes in the current project and any configured scan roots. To recall earlier work, search the notes first; unless they fully answer the question asked (a related note is not an answer), search past chats before answering: the harness's own past-chat search, and if it has none, errors or finds nothing, grep its saved session transcripts on disk (often git-ignored: use grep -r or rg --no-ignore --hidden). When you resume a feature, set its status to active; when you stop, leave it active only if work continues, otherwise paused or done. When a durable result settles (diagnosis, decision, verified fix, measurement), update the feature's context.md and commit it. Commits, pushes and installs alone are not entries. Subagents report instead of flushing."
 
 limit=10
 open=$(rg -l --max-depth 2 '^status:[[:space:]]*(active|paused)\b' "$feat" -g 'context.md' 2>/dev/null || true)
