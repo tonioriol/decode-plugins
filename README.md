@@ -46,7 +46,7 @@ The index is local to each plugin's data directory; no account, project notes, s
 
 Off by default. Claude Code and Codex have no semantic search over their own past sessions; this option adds one. Turn it on and memory exposes a second tool, `search_chats`, over your own **past sessions of that harness**: Claude Code reads `~/.claude/projects`, Codex reads `~/.codex/sessions`. While it is off, the `chats` server starts with no tools and indexes nothing.
 
-- **Claude Code:** set the memory option `index_chats` to true (`/plugin`, or `printf '%s\n' '{"index_chats":true}' | claude plugin configure memory@decode-plugins --values-stdin`).
+- **Claude Code:** set the memory option `index_chats` to true (`/plugin`, or `printf '%s\n' '{"index_chats":"true"}' | claude plugin configure memory@decode-plugins --values-stdin`).
 - **Codex (and Claude):** create the empty file `~/.config/decode-plugins/index-chats` (under `$XDG_CONFIG_HOME` when set), or export `DECODE_PLUGINS_INDEX_CHATS=true` for the harness process. The file also works for a Codex started from the desktop app.
 
 Only user and assistant prose is indexed. Tool calls and outputs, reasoning, and injected system or environment blocks are left out, and so is Claude's subagent traffic. The prose is extracted into plain markdown under the plugin data folder (`<data>/chats/corpus/<project>/chats/<session>--pNNN.md`, split below the engine's 1 MB file limit) and served by the same engine as the notes search, so chat text and its derived index stay on this machine. The extract is refreshed when the server starts and every 30 seconds while it runs, re-reading only transcripts whose size or mtime changed; the engine notices the changed files on the next search.
