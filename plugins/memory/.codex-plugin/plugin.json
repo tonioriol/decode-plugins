@@ -25,6 +25,29 @@
         "search"
       ],
       "default_tools_approval_mode": "approve"
+    },
+    "chats": {
+      "type": "stdio",
+      "command": "bash",
+      "args": [
+        "-c",
+        "exec env DECODE_PLUGINS_HARNESS=codex \"${CODEX_HOME:-$HOME/.codex}/plugins/cache/decode-plugins/memory/0.1.5/scripts/chats-server.sh\""
+      ],
+      "env_vars": [
+        "CODEX_HOME",
+        "HOME",
+        "PATH",
+        "XDG_CACHE_HOME",
+        "GH_CONFIG_DIR",
+        "DECODE_PLUGINS_STANDALONE",
+        "XDG_CONFIG_HOME",
+        "DECODE_PLUGINS_INDEX_CHATS"
+      ],
+      "enabled": true,
+      "enabled_tools": [
+        "search_chats"
+      ],
+      "default_tools_approval_mode": "approve"
     }
   },
   "skills": "./skills",

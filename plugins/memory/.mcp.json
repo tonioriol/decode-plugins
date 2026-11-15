@@ -7,6 +7,13 @@
         "DECODE_PLUGINS_SCAN_ROOT": "${user_config.scan_root}",
         "DECODE_PLUGINS_SCAN_ROOT_2": "${user_config.scan_root_2}"
       }
+    },
+    "chats": {
+      "type": "stdio",
+      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/chats-server.sh",
+      "env": {
+        "DECODE_PLUGINS_INDEX_CHATS": "${user_config.index_chats}"
+      }
     }
   }
 }
