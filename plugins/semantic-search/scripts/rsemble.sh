@@ -21,7 +21,9 @@ binary="$data/bin/$release/$asset"
 
 if [[ ! -x $binary ]]; then
   mkdir -p "$data/bin/$release"
-  stage=$(mktemp -d "$data/bin/$release/download.XXXXXX")
+  # Download in the system temp folder: a server killed mid-download (harnesses SIGKILL their MCP servers) leaves
+  # nothing behind in the data folder, and the OS clears what is left there.
+  stage=$(mktemp -d "${TMPDIR:-/tmp}/rsemble-download.XXXXXX")
   trap 'rm -rf "$stage"' EXIT
   if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
     gh release download "$release" --repo "$repo" --pattern "$asset" --pattern SHA256SUMS --dir "$stage" >&2 || true
@@ -43,9 +45,11 @@ for line in sums.read_text().splitlines():
 if expected.get(binary.name) != hashlib.sha256(binary.read_bytes()).hexdigest():
     raise SystemExit('rsemble: release checksum mismatch; refusing to run the download')
 PY
-  chmod 755 "$stage/$asset"
-  # A pinned, checksummed release: concurrent first runs publish identical bytes atomically.
-  mv -f "$stage/$asset" "$binary"
+  # A pinned, checksummed release: concurrent first runs publish identical bytes atomically, by a rename within
+  # the data folder (the temp folder may be another filesystem).
+  cp "$stage/$asset" "$binary.$$"
+  chmod 755 "$binary.$$"
+  mv -f "$binary.$$" "$binary"
   rm -rf "$stage"
   trap - EXIT
 fi

@@ -4,8 +4,10 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -22,6 +24,7 @@ if args[:2] == ['auth', 'status']:
     raise SystemExit(1 if os.environ.get('AUTH_FAIL') else 0)
 with open(os.environ['DOWNLOAD_LOG'], 'a') as f: f.write(tool + ' ' + repr(args) + '\\n')
 if os.environ.get('DOWNLOAD_FAIL'): raise SystemExit(1)
+if os.environ.get('DOWNLOAD_HANG'): __import__('time').sleep(60)
 binary = %r
 digest = '0' * 64 if os.environ.get('BAD_CHECKSUM') else hashlib.sha256(binary).hexdigest()
 asset = 'rsemble-' + {'Darwin': 'aarch64-apple-darwin', 'Linux': 'aarch64-unknown-linux-gnu'}[os.popen('uname -s').read().strip()]
@@ -46,7 +49,9 @@ class Launchers(unittest.TestCase):
         self.project.mkdir()
         self.log = self.root / 'downloads'
         self.env = dict(os.environ, HOME=str(self.home), PATH=str(self.bin) + ':' + os.environ['PATH'],
-                        CLAUDE_PLUGIN_DATA=str(self.root / 'plugin data'), DOWNLOAD_LOG=str(self.log))
+                        CLAUDE_PLUGIN_DATA=str(self.root / 'plugin data'), DOWNLOAD_LOG=str(self.log),
+                        TMPDIR=str(self.root / 'tmp'))
+        (self.root / 'tmp').mkdir()
         for name in ('DECODE_PLUGINS_DATA', 'XDG_CONFIG_HOME', 'CLAUDE_PROJECT_DIR'):
             self.env.pop(name, None)
         self.write_executable(self.bin / 'uname', '#!/bin/sh\ncase "$1" in -s) echo Darwin;; -m) echo arm64;; esac\n')
@@ -90,7 +95,8 @@ class Launchers(unittest.TestCase):
         self.assertEqual(self.values(args, '--folder'), ['.'])
         self.assertNotIn('--scan', args)
         self.assertEqual(self.installed.read_bytes(), FAKE_BINARY)
-        self.assertEqual(list(self.installed.parent.glob('download.*')), [])
+        self.assertEqual(list(self.installed.parent.iterdir()), [self.installed])
+        self.assertEqual(list((self.root / 'tmp').iterdir()), [])
         self.assertIn(f"gh ['release', 'download', '{RELEASE}', '--repo', 'tonioriol/decode-plugins'", self.log.read_text())
         self.assertEqual(self.run_server(AUTH_FAIL='1', DOWNLOAD_FAIL='1').returncode, 0)
         self.assertEqual(len(self.log.read_text().splitlines()), 1)
@@ -112,8 +118,17 @@ class Launchers(unittest.TestCase):
         result = self.run_server(BAD_CHECKSUM='1')
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('checksum mismatch', result.stderr)
-        self.assertFalse(self.installed.exists())
-        self.assertEqual(list(self.installed.parent.glob('download.*')), [])
+        self.assertEqual(list(self.installed.parent.iterdir()), [])
+        self.assertEqual(list((self.root / 'tmp').iterdir()), [])
+
+    def test_a_server_killed_mid_download_leaves_nothing_in_the_data_folder(self):
+        server = subprocess.Popen([str(ROOT / 'plugins/memory/scripts/server.sh')], cwd=self.project,
+                                  env=dict(self.env, DOWNLOAD_HANG='1'), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        while not self.log.exists():
+            time.sleep(0.05)
+        os.killpg(server.pid, signal.SIGKILL)
+        server.wait()
+        self.assertEqual(list(self.installed.parent.iterdir()), [])
 
     def test_notes_index_is_shared_with_decode_and_every_harness(self):
         args = self.args('memory')
