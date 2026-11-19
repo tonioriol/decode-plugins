@@ -13,7 +13,7 @@ import unittest
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / '.agent-runs' / 'launcher-tests'
 FIXTURES.mkdir(parents=True, exist_ok=True)
-RELEASE = 'v0.2.0'
+RELEASE = 'v0.2.1'
 ASSET = 'rsemble-aarch64-apple-darwin'
 FAKE_BINARY = b'#!/usr/bin/env python3\nimport json,sys\nprint(json.dumps(sys.argv[1:]))\n'
 # Writes the release files the way gh (into --dir) or curl (to -o) would, logging each call.
@@ -186,21 +186,22 @@ class Launchers(unittest.TestCase):
 
     def test_codex_manifests_launch_from_installed_cache_and_preserve_project(self):
         codex_home = self.root / 'codex home with spaces'
+        self.write_executable(self.root / 'shared data/bin' / RELEASE / ASSET, FAKE_BINARY.decode())
         for plugin in ('semantic-search', 'memory'):
             source = ROOT / 'plugins' / plugin
             manifest = json.loads((source / '.codex-plugin/plugin.json').read_text())
             installed = codex_home / 'plugins/cache/decode-plugins' / plugin / manifest['version']
             shutil.copytree(source, installed)
             server = manifest['mcpServers'][plugin]
-            transport_env = dict(self.env)
-            transport_env.pop('CODEX_HOME', None)
-            if 'CODEX_HOME' in server.get('env_vars', []):
-                transport_env['CODEX_HOME'] = str(codex_home)
+            # Codex passes the server only the variables its manifest names.
+            offered = dict(self.env, CODEX_HOME=str(codex_home), DECODE_PLUGINS_DATA=str(self.root / 'shared data'))
+            transport_env = {name: offered[name] for name in server['env_vars'] if name in offered}
             result = subprocess.run([server['command'], *server.get('args', [])], cwd=self.project,
                                     env=transport_env, text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             args = json.loads(result.stdout)
             self.assertEqual(self.values(args, '--project'), [str(self.project)])
+            self.assertEqual(self.values(args, '--storage'), [str(self.root / 'shared data' / plugin)])
             self.assertEqual(self.values(args, '--tool'), ['search' if plugin == 'memory' else 'project_search'])
 
     def test_concurrent_downloads_install_a_complete_binary(self):

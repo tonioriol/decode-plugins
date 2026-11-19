@@ -5,7 +5,7 @@
 # Data shared with Decode and between harnesses lives under DECODE_PLUGINS_DATA (default ~/.decode/plugin-data):
 # the binary in bin/<release>/, the notes index in memory/. The servers pick their own --storage.
 set -euo pipefail
-release=v0.2.0
+release=v0.2.1
 repo=tonioriol/decode-plugins
 data=${DECODE_PLUGINS_DATA:-$HOME/.decode/plugin-data}
 

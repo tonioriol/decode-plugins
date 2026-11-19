@@ -1,4 +1,4 @@
-rsemble is part of rsemble, a Rust port of MinishLab Semble (https://github.com/MinishLab/semble): the
+rsemble is a Rust port of MinishLab Semble (https://github.com/MinishLab/semble): the
 chunking, the hybrid BM25 + static-embedding retrieval, the reciprocal-rank
 fusion, the ranking boosts and penalties, the language table and the ranking
 regular expressions follow Semble's design and code.

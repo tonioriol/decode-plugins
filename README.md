@@ -138,7 +138,7 @@ Pinned implementation references: [native MCP fields](https://github.com/openai/
 [approval meaning](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/core/src/mcp_tool_call.rs#L2772-L2784),
 and [`/hooks` dispatch](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/tui/src/chatwidget/slash_dispatch.rs#L537-L539).
 
-## Development and verification
+## Development and testing
 
 ```sh
 python3 scripts/sync-launchers.py --check
@@ -161,6 +161,8 @@ The check fails on byte drift; the native hook tests also accept
 fixtures. Codex 0.169 code-mode work is detected from completed command and
 file-change events, never by executing or interpreting transcript JavaScript.
 
-For isolated installation, set `CLAUDE_CONFIG_DIR` and `CODEX_HOME` to disposable directories. Codex also discovers home-wide instructions independently of `CODEX_HOME`; use a disposable home when verifying that only packaged content loads. Never replace a real user configuration with a test fixture. [Building and releasing](docs/building.md) documents the engine source, the release workflow and Windows. [Trial verification](docs/verification.md) records the tested versions, real runtime evidence, and remaining boundaries.
+For isolated installation, set `CLAUDE_CONFIG_DIR` and `CODEX_HOME` to disposable directories. Codex also discovers home-wide instructions independently of `CODEX_HOME`; use a disposable home when verifying that only packaged content loads. Never replace a real user configuration with a test fixture. [Building and releasing](docs/building.md) documents the engine source, the release workflow and Windows.
+
+Before a release, the plugins are also checked end to end: a clean marketplace install in a disposable `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, a cold download of the pinned release, and real `search` and `project_search` calls from a model-driven session.
 
 References: [Claude dependencies](https://code.claude.com/docs/en/plugins/dependencies), [Claude manifest reference](https://code.claude.com/docs/en/plugins-reference), [Codex plugin packaging](https://developers.openai.com/plugins/build/plugins).
