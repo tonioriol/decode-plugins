@@ -1,0 +1,42 @@
+rsemble is part of rsemble, a Rust port of MinishLab Semble (https://github.com/MinishLab/semble): the
+chunking, the hybrid BM25 + static-embedding retrieval, the reciprocal-rank
+fusion, the ranking boosts and penalties, the language table and the ranking
+regular expressions follow Semble's design and code.
+
+Semble is distributed under the MIT License:
+
+    MIT License
+
+    Copyright (c) 2026 Thomas van Dongen
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+
+Citation requested by the Semble authors:
+
+    van Dongen, Thomas and Tulkens, Stephan. "Semble: Fast and Accurate Code
+    Search for Agents". Zenodo, 2026. doi:10.5281/zenodo.19785932
+
+The embedding model (minishlab/potion-code-16M, MIT) is not part of this
+repository. It is downloaded at first use from Hugging Face.
+
+The list of dependency and build-output folders never indexed (src/files.rs,
+SKIPPED_DIRS) is the DIRS_TO_IGNORE list of Roo Code
+(https://github.com/RooCodeInc/Roo-Code, src/services/glob/constants.ts),
+Copyright Roo Code, Inc., licensed under the Apache License, Version 2.0
+(https://www.apache.org/licenses/LICENSE-2.0).

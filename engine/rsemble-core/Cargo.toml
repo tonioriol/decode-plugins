@@ -1,0 +1,63 @@
+[package]
+name = "rsemble-core"
+description = "Semantic code search engine: tree-sitter chunks, model2vec embeddings, BM25 and hybrid ranking (rsemble, a Rust port of MinishLab Semble)."
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+license = "MIT"
+
+# The lints of the standalone MIT workspace these crates come from (not Decode's: no Decode-specific clippy bans).
+[lints.rust]
+unsafe_code = "deny"
+missing_debug_implementations = "warn"
+unused_must_use = "deny"
+rust_2018_idioms = { level = "deny", priority = -1 }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+wildcard_imports = "deny"
+allow_attributes_without_reason = "deny"
+
+[features]
+# `test_embedder`, a tiny in-memory model for other crates' tests.
+test-util = []
+
+[dependencies]
+memmap2 = { workspace = true }
+# `fancy-regex` on tokenizers directly: model2vec-rs's own `fancy-regex` feature also turns on the tokenizers progress bar
+# (indicatif, whose number_prefix is unmaintained) and the esaxx C++ trainer, neither used to encode.
+model2vec-rs = { version = "0.4", default-features = false, features = ["local-only"] }
+tokenizers = { version = "0.21", default-features = false, features = ["fancy-regex"] }
+tree-sitter = { version = "0.25", default-features = false, features = ["std"] }
+tree-sitter-javascript = "0.23"
+tree-sitter-python = "0.23"
+tree-sitter-rust = "0.23"
+tree-sitter-typescript = "0.23"
+tree-sitter-go = "0.25"
+tree-sitter-c = "0.24"
+tree-sitter-cpp = "0.23"
+tree-sitter-c-sharp = "0.23"
+tree-sitter-ruby = "0.23"
+tree-sitter-java = "0.23"
+tree-sitter-php = "0.22"
+tree-sitter-swift = "0.7"
+tree-sitter-kotlin-sg = "0.4"
+tree-sitter-css = "0.25"
+tree-sitter-html = "0.23"
+tree-sitter-ocaml = "0.23"
+tree-sitter-solidity = "1.2"
+tree-sitter-zig = "1.1"
+tree-sitter-dart-orchard = "0.7"
+tree-sitter-elixir = "0.3"
+tree-sitter-md = "0.5"
+tree-sitter-bash = "0.25"
+globset = "0.4"
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
