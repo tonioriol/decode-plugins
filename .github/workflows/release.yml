@@ -91,6 +91,8 @@ jobs:
         working-directory: engine
         run: |
           cargo about generate --locked --fail about.hbs -o ../dist/THIRD-PARTY-LICENSES.txt
+          printf '\n================================================================================\nVendored tree-sitter-vue (MIT)\n--------------------------------------------------------------------------------\n' >> ../dist/THIRD-PARTY-LICENSES.txt
+          cat rsemble-core/grammars/vue/LICENSE >> ../dist/THIRD-PARTY-LICENSES.txt
           cp rsemble/LICENSE ../dist/LICENSE
           cat rsemble/NOTICE > ../dist/NOTICE
       - name: Checksums

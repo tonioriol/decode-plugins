@@ -208,6 +208,7 @@ fn chunk_lines(source: &str) -> Vec<Boundary> {
 #[cfg(test)]
 mod tests {
     use super::{ChunkText, chunk_source};
+    use crate::detect_language;
 
     fn spans(chunks: &[ChunkText]) -> Vec<(u32, u32)> {
         chunks
@@ -245,12 +246,76 @@ mod tests {
             .map(|i| format!("    let value_{i} = {i} * 2 + 1;\n"))
             .collect();
         let source = format!("use a::b;\nuse c::d;\n\nfn long() {{\n{long_body}}}\n\nfn short() {{}}\n");
-        let by_lines = chunk_source(&source, Some("lua"), |_| None);
-        let by_caller = chunk_source(&source, Some("lua"), |language| {
-            (language == "lua").then(|| tree_sitter_rust::LANGUAGE.into())
+        let by_lines = chunk_source(&source, Some("assembly"), |_| None);
+        let by_caller = chunk_source(&source, Some("assembly"), |language| {
+            (language == "assembly").then(|| tree_sitter_rust::LANGUAGE.into())
         });
         assert_eq!(by_caller, chunk_source(&source, Some("rust"), |_| None));
         assert_ne!(by_caller, by_lines);
+    }
+
+    #[test]
+    fn built_in_grammars_match_python_semble_chunks() {
+        let hs_rows = (0..40)
+            .map(|i| format!("(\"value {i}\", {i} * 4 + 1)"))
+            .collect::<Vec<_>>()
+            .join("\n    , ");
+        let haskell = format!(
+            "module Sample where\n\nreport :: [(String, Int)]\nreport =\n    [ {hs_rows}\n    ]\n\nvalue = 42\n"
+        );
+        let lua_rows: String = (0..40)
+            .map(|i| format!("    local value_{i} <const> = {i} * 4 + 1\n"))
+            .collect();
+        let lua = format!("local function report()\n{lua_rows}    return value_0\nend\n\nreturn report()\n");
+        let vue_rows: String = (0..40)
+            .map(|i| format!("    <li v-if=\"show\">{{{{ values[{i}] }}}}</li>\n"))
+            .collect();
+        let vue = format!(
+            "<template>\n  <ul>\n{vue_rows}  </ul>\n</template>\n\n<script setup>\nconst show = true\n</script>\n"
+        );
+
+        // (start byte, exclusive end byte, first line, last line) from Semble 0.7.3 with the
+        // semble-grammars 0.1.2 wheel. In each case line fallback yields different ranges.
+        for (path, source, expected) in [
+            (
+                "Sample.hs",
+                haskell,
+                [(0, 55, 1, 4), (60, 971, 5, 35), (972, 1293, 35, 47)].as_slice(),
+            ),
+            (
+                "sample.lua",
+                lua,
+                [
+                    (0, 23, 1, 1),
+                    (28, 883, 2, 23),
+                    (888, 1626, 24, 43),
+                    (1628, 1643, 45, 45),
+                ]
+                .as_slice(),
+            ),
+            (
+                "Sample.vue",
+                vue,
+                [
+                    (0, 10, 1, 1),
+                    (13, 847, 2, 22),
+                    (852, 1695, 23, 43),
+                    (1696, 1751, 44, 48),
+                ]
+                .as_slice(),
+            ),
+        ] {
+            let actual = chunk_source(&source, detect_language(path), |_| None);
+            assert_eq!(actual.len(), expected.len(), "{path}");
+            for (chunk, &(start, end, start_line, end_line)) in actual.iter().zip(expected) {
+                assert_eq!(Some(chunk.content.as_str()), source.get(start..end), "{path}");
+                assert_eq!(
+                    (chunk.start_line, chunk.end_line),
+                    (start_line, end_line),
+                    "{path}"
+                );
+            }
+        }
     }
 
     #[test]

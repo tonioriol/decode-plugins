@@ -138,9 +138,7 @@ impl Engine {
         let mut done = 0;
         let mut changed = Vec::new();
         for (root, files) in &listed {
-            let index = indexes
-                .entry(root.clone())
-                .or_insert_with(|| self.restore(root));
+            let index = indexes.entry(root.clone()).or_insert_with(|| self.restore(root));
             let report = |files_done: usize| progress("indexing files", done + files_done, total);
             if update(&self.embedder, root, index, files, &report) && !changed.contains(root) {
                 changed.push(root.clone());
@@ -441,7 +439,13 @@ mod tests {
         };
         assert_eq!(ranked(&[source("a", 1.0), source("b", 2.0)]), [1, 0]);
         assert_eq!(ranked(&[source("a", 2.0), source("b", 1.0)]), [0, 1]);
-        let cache = storage.path().join(MODEL_REVISION);
+        let cache = storage.path().join("e9d2a44ca6a05ac6685f3b23709ea57eb7352d5b");
         assert!(cache_file(&cache, &project.path().join("a")).is_file());
+        assert!(
+            !storage
+                .path()
+                .join("1b0ff71095656b23306542bbad34a09109673720")
+                .exists()
+        );
     }
 }

@@ -32,5 +32,6 @@ Citation requested by the Semble authors:
     van Dongen, Thomas and Tulkens, Stephan. "Semble: Fast and Accurate Code
     Search for Agents". Zenodo, 2026. doi:10.5281/zenodo.19785932
 
-The embedding model (minishlab/potion-code-16M, MIT) is not part of this
-repository. It is downloaded at first use from Hugging Face.
+The embedding models (minishlab/potion-code-16M-v2 and minishlab/potion-code-16M,
+both MIT) are not part of this repository. They are downloaded at first use
+from Hugging Face.

@@ -7,8 +7,8 @@ use std::process::ExitCode;
 use rsemble::default_storage;
 use rsemble::engine::Engine;
 use rsemble::mcp::{self, DEFAULT_LIMIT, MAX_LIMIT};
-use rsemble::serve;
 use rsemble::model::ensure_model;
+use rsemble::serve;
 use rsemble_core::Embedder;
 use serde_json::json;
 
@@ -73,7 +73,13 @@ fn run() -> Result<(), String> {
         let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
         let options = serve::parse_args(&raw.collect::<Vec<_>>(), &home)?;
         let cwd = std::env::current_dir().map_err(|error| error.to_string())?;
-        serve::run(options, home, cwd, &mut io::stdin().lock(), &mut io::stdout().lock());
+        serve::run(
+            options,
+            home,
+            cwd,
+            &mut io::stdin().lock(),
+            &mut io::stdout().lock(),
+        );
         return Ok(());
     }
     let args = parse(raw)?;
@@ -82,9 +88,10 @@ fn run() -> Result<(), String> {
         .clone()
         .or_else(default_storage)
         .ok_or("no storage folder: pass --storage or set SEMBLE_RS_HOME")?;
-    let index = args.index.clone().unwrap_or_else(|| {
-        storage.join(if args.docs_only { "docs-index" } else { "index" })
-    });
+    let index = args
+        .index
+        .clone()
+        .unwrap_or_else(|| storage.join(if args.docs_only { "docs-index" } else { "index" }));
     let cwd = || std::env::current_dir().map_err(|error| error.to_string());
     match command.as_str() {
         "model" => {

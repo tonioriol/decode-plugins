@@ -1,4 +1,4 @@
-//! The embedding model: the pinned revision of `minishlab/potion-code-16M`, downloaded from Hugging Face on first
+//! The embedding model: the pinned revision of `minishlab/potion-code-16M-v2`, downloaded from Hugging Face on first
 //! use into `<storage>/semble-model-<revision>` (where Decode keeps it too), checked against its SHA-256 before it is published, and rechecked on every
 //! later use. A failed download or check publishes nothing.
 
@@ -8,25 +8,10 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
+use rsemble_core::model_assets::{CODE_MODEL_FILES, code_model_base_url};
 use sha2::{Digest, Sha256};
 
-/// The pinned Hugging Face revision of `minishlab/potion-code-16M`.
-pub const MODEL_REVISION: &str = "1b0ff71095656b23306542bbad34a09109673720";
-/// The files model2vec loads, with their SHA-256 at [`MODEL_REVISION`].
-const MODEL_FILES: &[(&str, &str)] = &[
-    (
-        "config.json",
-        "edf07552b5d768d556ded176d19f3a34f25360548de3a246d226ce8e28647914",
-    ),
-    (
-        "tokenizer.json",
-        "8e84217af15e70e8127c855435fc3d8a4cd91d7bbe686f72e75f188118ec78ae",
-    ),
-    (
-        "model.safetensors",
-        "ca6159081a6e96cebe4ad878e5e8437bfccc761e8db16223370149cd2faa6c0b",
-    ),
-];
+pub use rsemble_core::model_assets::{CODE_MODEL_REVISION as MODEL_REVISION, code_model_dir as model_dir};
 /// Hosts a download may be redirected to.
 const TRUSTED_DOMAINS: &[&str] = &["huggingface.co", "hf.co"];
 /// Cap on one model file.
@@ -49,8 +34,8 @@ struct Source {
 impl Source {
     fn pinned() -> Self {
         Self {
-            base_url: format!("https://huggingface.co/minishlab/potion-code-16M/resolve/{MODEL_REVISION}"),
-            files: MODEL_FILES
+            base_url: code_model_base_url(),
+            files: CODE_MODEL_FILES
                 .iter()
                 .map(|(name, sha)| ((*name).to_owned(), (*sha).to_owned()))
                 .collect(),
@@ -61,11 +46,6 @@ impl Source {
             allow_loopback_http: false,
         }
     }
-}
-
-/// The folder the verified model lives in.
-pub fn model_dir(storage: &Path) -> PathBuf {
-    storage.join(format!("semble-model-{MODEL_REVISION}"))
 }
 
 /// The verified model folder under `storage`, downloaded first when it is missing. An existing install is

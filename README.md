@@ -46,7 +46,7 @@ Data is shared between Claude Code, Codex and Decode, so nothing is downloaded o
 
 The past-chat index below stays per harness, in the plugin's own data folder.
 
-Indexes stay on this machine; no account, project notes, source files, or credentials are distributed with this repository. On first use, the engine downloads its embedding model from Hugging Face. Release downloads pin a version and verify the release's SHA-256 checksum before execution. A checksum authenticates integrity relative to this repository's release, not a separate signing identity.
+Indexes stay on this machine; no account, project notes, source files, or credentials are distributed with this repository. On first use, the engine downloads and verifies its pinned `minishlab/potion-code-16M-v2` embedding model from Hugging Face. Model and index directories include the model revision, so upgrading to v2 rebuilds indexes rather than mixing v1 and v2 embeddings. Release downloads pin a version and verify the release's SHA-256 checksum before execution. A checksum authenticates integrity relative to this repository's release, not a separate signing identity.
 
 ### Optional: search this harness's past chats
 

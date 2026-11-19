@@ -8,11 +8,13 @@ mod index;
 mod language_table;
 mod languages;
 mod mapped_file;
+pub mod model_assets;
 mod ranking;
 mod rerank;
 mod search;
 mod sync;
 mod tokens;
+mod vendored_grammar;
 
 pub use chunking::{ChunkText, chunk_lines_text};
 pub use embed::Embedder;

@@ -901,6 +901,7 @@ dependencies = [
 name = "rsemble-core"
 version = "0.1.0"
 dependencies = [
+ "cc",
  "globset",
  "memmap2",
  "model2vec-rs",
@@ -917,10 +918,13 @@ dependencies = [
  "tree-sitter-dart-orchard",
  "tree-sitter-elixir",
  "tree-sitter-go",
+ "tree-sitter-haskell",
  "tree-sitter-html",
  "tree-sitter-java",
  "tree-sitter-javascript",
  "tree-sitter-kotlin-sg",
+ "tree-sitter-language",
+ "tree-sitter-lua",
  "tree-sitter-md",
  "tree-sitter-ocaml",
  "tree-sitter-php",
@@ -1337,6 +1341,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tree-sitter-haskell"
+version = "0.23.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "977c51e504548cba13fc27cb5a2edab2124cf6716a1934915d07ab99523b05a4"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
 name = "tree-sitter-html"
 version = "0.23.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1381,6 +1395,16 @@ name = "tree-sitter-language"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0af592be68c579aa78a16846bd19422978c3c52e438523d45ff5d1bff1f9d4a"
+
+[[package]]
+name = "tree-sitter-lua"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8daaf5f4235188a58603c39760d5fa5d4b920d36a299c934adddae757f32a10c"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
 
 [[package]]
 name = "tree-sitter-md"

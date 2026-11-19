@@ -52,9 +52,9 @@ pub enum Ignores {
 
 /// The files of `root` the index may hold, by root-relative `/`-separated path, with their stamps: files of a
 /// language Semble reads, at most [`MAX_FILE_BYTES`] long, outside hidden and dependency directories, not ignored
-/// (`.gitignore`, `.ignore`, `.rgignore`, `.rooignore`, `.decodeignore`, from the parents too with
-/// [`Ignores::WithParents`]) and not matching `exclusions`. Only documentation files when `docs_only`. Symbolic links
-/// are not followed. Decode lists a folder the same way, so both can keep the same index of it.
+/// (`.gitignore` within the nearest Git repository; `.ignore`, `.rgignore`, `.rooignore`, `.decodeignore`; from
+/// parents too with [`Ignores::WithParents`]) and not matching `exclusions`. Only documentation files when
+/// `docs_only`. Symbolic links are not followed. Decode lists a folder the same way, so both can keep the same index.
 pub fn list(
     root: &Path,
     exclusions: &Exclusions,
@@ -62,9 +62,8 @@ pub fn list(
     ignores: Ignores,
 ) -> io::Result<BTreeMap<String, FileStamp>> {
     let mut builder = WalkBuilder::new(root);
-    builder
-        .parents(ignores == Ignores::WithParents)
-        .require_git(false);
+    // The walker's default Git-aware mode stops .gitignore lookup at a nested repository or worktree.
+    builder.parents(ignores == Ignores::WithParents);
     for name in [".rgignore", ".rooignore", ".decodeignore"] {
         builder.add_custom_ignore_filename(name);
     }
@@ -128,6 +127,7 @@ mod tests {
     fn lists_source_files_and_skips_ignored_hidden_dependency_big_and_unknown_ones() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
+        fs::create_dir(root.join(".git")).unwrap();
         write(root, "src/lib.rs", "fn a() {}\n");
         write(root, "docs/guide.md", "# Guide\n");
         write(root, "node_modules/x/index.js", "x\n");
@@ -178,5 +178,31 @@ mod tests {
         };
         assert_eq!(keys(Ignores::Own), ["a.md", "parent-ignored.md"]);
         assert_eq!(keys(Ignores::WithParents), ["a.md"]);
+    }
+
+    #[test]
+    fn nested_repository_stops_outer_gitignore_rules() {
+        let dir = tempfile::tempdir().unwrap();
+        let outer = dir.path();
+        fs::create_dir(outer.join(".git")).unwrap();
+        write(outer, ".gitignore", "mock/\n");
+        fs::create_dir_all(outer.join("checkout/.git")).unwrap();
+        write(outer, "worktree/.git", "gitdir: ../.git/worktrees/worktree\n");
+        for name in ["checkout", "worktree"] {
+            let repo = outer.join(name);
+            write(&repo, ".gitignore", "generated/\n");
+            write(&repo, "src/mock/timers.ts", "export const timers = [];\n");
+            write(&repo, "src/generated/types.ts", "export type Id = string;\n");
+            let files = list(
+                &repo.join("src"),
+                &Exclusions::new(&[]).unwrap(),
+                false,
+                Ignores::WithParents,
+            )
+            .unwrap()
+            .into_keys()
+            .collect::<Vec<_>>();
+            assert_eq!(files, ["mock/timers.ts"], "{name}");
+        }
     }
 }

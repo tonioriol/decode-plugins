@@ -27,7 +27,7 @@ impl Embedder {
     /// Loads the model in `folder` (`config.json`, `tokenizer.json`, `model.safetensors`). The tensors are read
     /// block by block straight into the model's tables rather than through a copy of the whole file: the
     /// allocator keeps a freed buffer of that size resident, which doubled the footprint of every process holding
-    /// a model. The embedding table is kept as int8 rows with one scale each, a quarter of the float table.
+    /// a model. F16 and F32 embeddings are read a block at a time and kept as int8 rows with one scale each.
     pub fn load(folder: &Path) -> Result<Self, String> {
         let config: serde_json::Value = serde_json::from_slice(
             &fs::read(folder.join("config.json")).map_err(|error| format!("config.json: {error}"))?,
@@ -131,6 +131,21 @@ struct TensorInfo {
 /// Bytes read per block: small enough that the block buffer is not a large allocation.
 const BLOCK: usize = 1 << 15;
 
+/// Widen a little-endian IEEE 754 binary16 without rounding or a hardware FP16 dependency.
+fn f16_to_f32(bytes: [u8; 2]) -> f32 {
+    let bits = u16::from_le_bytes(bytes);
+    let sign = u32::from(bits & 0x8000) << 16;
+    let exponent = u32::from((bits >> 10) & 0x1f);
+    let fraction = bits & 0x03ff;
+    let magnitude = match exponent {
+        // A subnormal is fraction × 2^-24; this also handles zero.
+        0 => (f32::from(fraction) / 16_777_216.0).to_bits(),
+        31 => 0x7f80_0000 | (u32::from(fraction) << 13),
+        _ => ((exponent + (127 - 15)) << 23) | (u32::from(fraction) << 13),
+    };
+    f32::from_bits(sign | magnitude)
+}
+
 impl Tensors {
     fn open(path: &Path) -> io::Result<Self> {
         let file = fs::File::open(path)?;
@@ -185,21 +200,34 @@ impl Tensors {
             reason = "model2vec keeps its tables in f32"
         )]
         match info.dtype.as_str() {
+            "F16" => self.decode(&info, f16_to_f32),
             "F32" => self.decode(&info, f32::from_le_bytes),
             "F64" => self.decode(&info, |bytes| f64::from_le_bytes(bytes) as f32),
             other => Err(io::Error::other(format!("unsupported dtype {other}"))),
         }
     }
 
-    /// The first of `names` present, a 2-D `f32` table, as int8 rows with one scale each (`max |x| / 127`, so a
-    /// quarter of the memory), and its column count.
+    /// The first of `names` present, a 2-D float table, as int8 rows with one scale each (`max |x| / 127`),
+    /// and its column count.
     fn quantized_rows(&self, names: &[&str]) -> io::Result<(Vec<i8>, Vec<f32>, usize)> {
         let info = self.info(names)?;
-        let (&[rows, cols], "F32") = (info.shape.as_slice(), info.dtype.as_str()) else {
-            return Err(io::Error::other("the embeddings are not a 2-D F32 table"));
+        match info.dtype.as_str() {
+            "F16" => self.quantize(&info, f16_to_f32),
+            "F32" => self.quantize(&info, f32::from_le_bytes),
+            other => Err(io::Error::other(format!("unsupported embeddings dtype {other}"))),
+        }
+    }
+
+    fn quantize<const SIZE: usize>(
+        &self,
+        info: &TensorInfo,
+        decode: impl Fn([u8; SIZE]) -> f32,
+    ) -> io::Result<(Vec<i8>, Vec<f32>, usize)> {
+        let &[rows, cols] = info.shape.as_slice() else {
+            return Err(io::Error::other("the embeddings are not a 2-D table"));
         };
         let [start, _] = info.data_offsets;
-        let row_bytes = cols * 4;
+        let row_bytes = cols * SIZE;
         let per_block = (BLOCK / row_bytes).max(1);
         let mut data = Vec::with_capacity(rows * cols);
         let mut scales = Vec::with_capacity(rows);
@@ -212,8 +240,8 @@ impl Tensors {
             self.file
                 .read_exact_at(part, self.base + start + (done * row_bytes) as u64)?;
             for bytes in part.chunks_exact(row_bytes) {
-                for (value, bytes) in row.iter_mut().zip(bytes.as_chunks::<4>().0) {
-                    *value = f32::from_le_bytes(*bytes);
+                for (value, bytes) in row.iter_mut().zip(bytes.as_chunks::<SIZE>().0) {
+                    *value = decode(*bytes);
                 }
                 let scale = row.iter().fold(0.0_f32, |max, value| max.max(value.abs())) / 127.0;
                 #[expect(clippy::cast_possible_truncation, reason = "clamped to the i8 range")]
@@ -313,7 +341,7 @@ mod tests {
     }
 
     #[test]
-    fn loading_from_the_folder_matches_the_float_model() {
+    fn loading_f16_and_f32_from_the_folder_matches_the_float_model() {
         let words = ["zebra", "walrus", "otter", "heron", "bison", "lemur"];
         let mut vocab = serde_json::Map::new();
         vocab.insert("[UNK]".into(), 0.into());
@@ -327,15 +355,21 @@ mod tests {
             "model": {"type": "WordPiece", "unk_token": "[UNK]", "continuing_subword_prefix": "##", "max_input_chars_per_word": 100, "vocab": vocab},
         })
         .to_string();
-        // Rows of different magnitudes, wider than one read block, shared by two tokens through the mapping, and weighted per token.
-        let (rows, cols) = (4_usize, 3000_usize);
-        let table: Vec<u8> = (0..rows * cols)
-            .flat_map(|at| {
-                ((((at * 7919 + at / cols * 131) % 1000) as f32 / 500.0 - 1.0)
-                    * (1 + at / cols).pow(3) as f32)
-                    .to_le_bytes()
-            })
-            .collect();
+        // Exact binary16 values and their float equivalents. Vary by row and column so a
+        // misread block or a lost scale changes the result even after normalization.
+        let row_patterns: [[(u16, f32); 3]; 4] = [
+            [(0x0000, 0.0), (0x0000, 0.0), (0x0000, 0.0)],
+            [(0x3c00, 1.0), (0xb200, -0.1875), (0x3400, 0.25)],
+            [(0xd000, -32.0), (0x4e00, 24.0), (0x4880, 9.0)],
+            [(0x3a00, 0.75), (0x8000, -0.0), (0x0001, 1.0 / 16_777_216.0)],
+        ];
+        // A row spans a whole read block in F32, while both dtypes span multiple blocks overall.
+        let (rows, cols) = (row_patterns.len(), 9000_usize);
+        let values = row_patterns.iter().enumerate().flat_map(|(r, pattern)| {
+            (0..cols).map(move |c| pattern.get((c + r) % pattern.len()).copied().unwrap())
+        });
+        let f32_table = values.clone().flat_map(|(_, x)| x.to_le_bytes()).collect();
+        let f16_table = values.flat_map(|(bits, _)| bits.to_le_bytes()).collect();
         let mapping: Vec<u8> = [0_i64, 1, 2, 3, 1, 2, 3]
             .iter()
             .flat_map(|row| row.to_le_bytes())
@@ -344,28 +378,44 @@ mod tests {
             .iter()
             .flat_map(|w| w.to_le_bytes())
             .collect();
-        let model = safetensors(&[
-            ("embeddings", "F32", vec![rows, cols], table),
-            ("mapping", "I64", vec![7], mapping),
+        let f32_model = safetensors(&[
+            ("embeddings", "F32", vec![rows, cols], f32_table),
+            ("mapping", "I64", vec![7], mapping.clone()),
             ("weights", "F64", vec![7], weights),
+        ]);
+        let f16_weights = [0x3c00_u16, 0x3800, 0x4000, 0x3400, 0x3e00, 0x3a00, 0x4200]
+            .into_iter()
+            .flat_map(u16::to_le_bytes)
+            .collect();
+        let f16_model = safetensors(&[
+            ("embeddings", "F16", vec![rows, cols], f16_table),
+            ("mapping", "I64", vec![7], mapping),
+            ("weights", "F16", vec![7], f16_weights),
         ]);
         let config = br#"{"normalize": true}"#;
         let dir = std::env::temp_dir().join(format!("rsemble_embed_load_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("tokenizer.json"), &tokenizer).unwrap();
-        std::fs::write(dir.join("model.safetensors"), &model).unwrap();
         std::fs::write(dir.join("config.json"), config).unwrap();
 
-        let loaded = Embedder::load(&dir).unwrap();
-        let reference = Embedder::from_bytes(tokenizer.as_bytes(), &model, config).unwrap();
-        std::fs::remove_dir_all(&dir).unwrap();
         let texts: Vec<String> = ["zebra lemur", "walrus otter heron", "bison zebra zebra"]
             .iter()
             .map(|text| (*text).to_owned())
             .collect();
-        assert_eq!(loaded.dim(), cols);
+        let load = |model: &[u8]| {
+            std::fs::write(dir.join("model.safetensors"), model).unwrap();
+            let embedder = Embedder::load(&dir).unwrap();
+            assert_eq!(embedder.dim(), cols);
+            embedder.embed(&texts)
+        };
+        let loaded = load(&f32_model);
+        assert_eq!(load(&f16_model), loaded);
+        std::fs::remove_dir_all(&dir).unwrap();
+
         // The loaded table is int8, so the rows match the float model's up to rounding.
-        let (loaded, reference) = (loaded.embed(&texts), reference.embed(&texts));
+        let reference = Embedder::from_bytes(tokenizer.as_bytes(), &f32_model, config)
+            .unwrap()
+            .embed(&texts);
         for (loaded, reference) in loaded.chunks(cols).zip(reference.chunks(cols)) {
             let cosine: f32 = loaded.iter().zip(reference).map(|(a, b)| a * b).sum();
             assert!(cosine > 0.9999, "{cosine}");

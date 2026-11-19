@@ -1,6 +1,7 @@
 {
   "name": "decode-plugins",
   "metadata": {
+    "version": "0.3.0",
     "description": "Project memory and semantic search plugins."
   },
   "owner": {

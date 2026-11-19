@@ -29,7 +29,7 @@ pub fn is_doc_language(language: &str) -> bool {
 /// chunking.
 pub type ExtraGrammar = fn(&str) -> Option<Language>;
 
-/// The grammar Semble's bundled `semble_grammars` parses `language` with, when this build has a crate for it.
+/// The built-in tree-sitter grammar for `language`, when one is available.
 /// Others fall back to line chunking, as Semble does for a language its bundle lacks.
 pub(crate) fn grammar(language: &str) -> Option<Language> {
     let function = match language {
@@ -41,10 +41,12 @@ pub(crate) fn grammar(language: &str) -> Option<Language> {
         "dart" => tree_sitter_dart_orchard::LANGUAGE,
         "elixir" => tree_sitter_elixir::LANGUAGE,
         "go" => tree_sitter_go::LANGUAGE,
+        "haskell" => tree_sitter_haskell::LANGUAGE,
         "html" => tree_sitter_html::LANGUAGE,
         "java" => tree_sitter_java::LANGUAGE,
         "javascript" => tree_sitter_javascript::LANGUAGE,
         "kotlin" => tree_sitter_kotlin_sg::LANGUAGE,
+        "lua" => tree_sitter_lua::LANGUAGE,
         "markdown" => tree_sitter_md::LANGUAGE,
         "ocaml" => tree_sitter_ocaml::LANGUAGE_OCAML,
         // The workspace pins tree-sitter-php 0.22, which still exposes a function returning the `Language`.
@@ -56,6 +58,7 @@ pub(crate) fn grammar(language: &str) -> Option<Language> {
         "swift" => tree_sitter_swift::LANGUAGE,
         "tsx" => tree_sitter_typescript::LANGUAGE_TSX,
         "typescript" => tree_sitter_typescript::LANGUAGE_TYPESCRIPT,
+        "vue" => crate::vendored_grammar::LANGUAGE_VUE,
         "zig" => tree_sitter_zig::LANGUAGE,
         _ => return None,
     };

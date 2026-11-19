@@ -4,8 +4,9 @@
 #
 # Data shared with Decode and between harnesses lives under DECODE_PLUGINS_DATA (default ~/.decode/plugin-data):
 # the binary in bin/<release>/, the notes index in memory/. The servers pick their own --storage.
+# The engine downloads and verifies its pinned embedding model; the launcher only installs the binary.
 set -euo pipefail
-release=v0.2.1
+release=v0.3.0
 repo=tonioriol/decode-plugins
 data=${DECODE_PLUGINS_DATA:-$HOME/.decode/plugin-data}
 

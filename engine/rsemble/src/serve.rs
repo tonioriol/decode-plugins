@@ -653,7 +653,11 @@ mod tests {
         write(&root, "code/alpha/notes/deploy.md", note);
         write(&root, "code/beta/notes/deploy.md", note);
         write(&root, "code/beta/docs/deploy.md", note);
-        write(&root, "code/beta/docs/deploy.rs", "fn deploy_pipeline_bundle_bucket() {}\n");
+        write(
+            &root,
+            "code/beta/docs/deploy.rs",
+            "fn deploy_pipeline_bundle_bucket() {}\n",
+        );
         let server = Server::new(options(&root, &[]), root.clone(), root.clone(), None);
         let engine = engine(&root.join("data"));
         let search = |workspace: &str, project: Option<&str>| {
@@ -711,7 +715,11 @@ mod tests {
     fn calls_wait_for_the_startup_index_and_relay_its_progress() {
         let home = tempfile::tempdir().unwrap();
         let root = home.path().canonicalize().unwrap();
-        write(&root, "code/alpha/notes/deploy.md", "# Deploy\n\nDeploy the bundle to the bucket.\n");
+        write(
+            &root,
+            "code/alpha/notes/deploy.md",
+            "# Deploy\n\nDeploy the bundle to the bucket.\n",
+        );
         let server = Server::new(
             options(&root, &["--tool", "find"]),
             root.clone(),
@@ -724,9 +732,19 @@ mod tests {
             if let Some(token) = token {
                 params["_meta"] = json!({"progressToken": token});
             }
-            writeln!(input, "{}", json!({"jsonrpc": "2.0", "id": id, "method": "tools/call", "params": params})).unwrap();
+            writeln!(
+                input,
+                "{}",
+                json!({"jsonrpc": "2.0", "id": id, "method": "tools/call", "params": params})
+            )
+            .unwrap();
         }
-        writeln!(input, "{}", json!({"jsonrpc": "2.0", "id": 3, "method": "tools/list"})).unwrap();
+        writeln!(
+            input,
+            "{}",
+            json!({"jsonrpc": "2.0", "id": 3, "method": "tools/list"})
+        )
+        .unwrap();
         let mut output = Vec::new();
         serve(&server, &mut input.as_slice(), &mut output);
         let messages: Vec<Value> = String::from_utf8(output)
@@ -752,7 +770,10 @@ mod tests {
             let reply = messages.iter().find(|message| message["id"] == id).unwrap();
             assert_eq!(reply["result"]["isError"], false);
             let text = reply["result"]["content"][0]["text"].as_str().unwrap();
-            assert!(text.contains("[alpha]") && text.contains("deploy.md:1-"), "{text}");
+            assert!(
+                text.contains("[alpha]") && text.contains("deploy.md:1-"),
+                "{text}"
+            );
         }
         let tools = messages.iter().find(|message| message["id"] == 3).unwrap();
         assert_eq!(tools["result"]["tools"][0]["name"], "find");
@@ -771,7 +792,11 @@ mod tests {
                 boost: 2.0
             }]
         );
-        let indexed = parse_args(&args(&["--storage", "s", "--index", "~/i", "--folder", "."]), home).unwrap();
+        let indexed = parse_args(
+            &args(&["--storage", "s", "--index", "~/i", "--folder", "."]),
+            home,
+        )
+        .unwrap();
         assert_eq!(indexed.index, PathBuf::from("/h/i"));
         assert!(parse_args(&args(&["--folder", "notes"]), home).is_err());
         assert!(parse_args(&args(&["--storage", "s"]), home).is_err());
