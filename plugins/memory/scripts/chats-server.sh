@@ -5,22 +5,21 @@
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 harness=${DECODE_PLUGINS_HARNESS:-claude}
-notes_data=${CLAUDE_PLUGIN_DATA:-${XDG_CACHE_HOME:-$HOME/.cache}/decode-plugins/memory}
+# Each harness keeps its own chats index; the model is shared with the notes search.
+chats=${CLAUDE_PLUGIN_DATA:-${XDG_CACHE_HOME:-$HOME/.cache}/decode-plugins/memory}/chats
+notes=${DECODE_PLUGINS_DATA:-$HOME/.decode/plugin-data}/memory
 
 enabled=0
 case ${DECODE_PLUGINS_INDEX_CHATS:-} in true|1) enabled=1 ;; esac
 [[ -e ${XDG_CONFIG_HOME:-$HOME/.config}/decode-plugins/index-chats ]] && enabled=1
 [[ $enabled == 1 ]] || exec python3 "$here/chat-index.py" stub
 
-export DECODE_PLUGINS_PREFER_DECODE=1
-export CLAUDE_PLUGIN_DATA="$notes_data/chats"
-corpus="$CLAUDE_PLUGIN_DATA/corpus"
-storage="$CLAUDE_PLUGIN_DATA/index"
-mkdir -p "$corpus" "$storage"
+corpus="$chats/corpus"
+mkdir -p "$corpus"
 
 # Reuse the embedding model the notes search already downloaded (the engine re-verifies its checksum).
-for model in "$notes_data"/index/semble-model-*; do
-  [[ -d $model && ! -e $storage/$(basename "$model") ]] && { cp -cR "$model" "$storage/" 2>/dev/null || cp -R "$model" "$storage/"; }
+for model in "$notes"/semble-model-*; do
+  [[ -d $model && ! -e $chats/$(basename "$model") ]] && { cp -cR "$model" "$chats/" 2>/dev/null || cp -R "$model" "$chats/"; }
 done
 
 python3 "$here/chat-index.py" sync "$harness" "$corpus"
@@ -30,5 +29,5 @@ owner=$$
 refresher=$!
 trap 'kill "$refresher" 2>/dev/null || true' EXIT
 
-"$here/semantic-mcp.sh" --scan "$corpus" --depth 1 --folder chats --docs-only --tool search_chats \
+"$here/rsemble.sh" serve --storage "$chats" --scan "$corpus" --depth 1 --folder chats --docs-only --tool search_chats \
   --description "Search past ${harness} conversations by meaning. Indexed: user and assistant text only (tool calls, tool output and reasoning are not). Each hit is a path:lines range of a text extract. The first lines of that file name the session and its source transcript; the '## mN role (line L, time)' headers give the message position, with L the line in the source transcript. To read around a hit, read a wider line range of the extract file; read the source transcript at line L when you need the tool calls. Pass project (the folder name shown in brackets) to filter, or workspace to rank a project first."

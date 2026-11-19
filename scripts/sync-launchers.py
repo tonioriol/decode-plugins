@@ -4,9 +4,9 @@ import pathlib
 import sys
 
 root = pathlib.Path(__file__).resolve().parent.parent
-source = (root / "scripts/semantic-mcp.sh").read_bytes()
+source = (root / "scripts/rsemble.sh").read_bytes()
 for plugin in ("memory", "semantic-search"):
-    target = root / "plugins" / plugin / "scripts/semantic-mcp.sh"
+    target = root / "plugins" / plugin / "scripts/rsemble.sh"
     if "--check" in sys.argv:
         if target.read_bytes() != source:
             raise SystemExit(f"Stale packaged launcher: {target.relative_to(root)}")

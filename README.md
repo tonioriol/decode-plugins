@@ -1,6 +1,6 @@
 # Decode plugins
 
-Marketplace for Decode companion plugins, with Claude Code plugins and
+Marketplace of Decode companion plugins, with Claude Code plugins and
 thin Codex adapters. It currently contains two plugins:
 
 - **semantic-search** exposes `project_search` for source code.
@@ -8,16 +8,16 @@ thin Codex adapters. It currently contains two plugins:
 
 ## Claude Code
 
-To install, run these two commands in Claude Code:
+Run these two commands in Claude Code:
 
 ```text
 /plugin marketplace add tonioriol/decode-plugins
 /plugin install memory@decode-plugins
 ```
 
-Use a recent Claude Code with plugin dependency and `userConfig` support. The historical launcher uses GitHub CLI to download its release binary. Install Bash and Python 3; the memory hooks also require Git, jq, and ripgrep.
+Use a recent Claude Code with plugin dependency and `userConfig` support. Development validation uses Claude Code 2.1.316. The first search downloads the pinned `rsemble` release binary with `curl` (or `gh` when it is signed in). Install Bash, curl and Python 3; the memory hooks also require Git, jq, and ripgrep.
 
-The trial release provides **macOS Apple Silicon** only. Other systems receive a clear missing-asset error until their binaries are published; see [building](docs/building.md). The launcher does not fetch source code or build it on the user's computer.
+Release binaries cover **macOS** (Apple Silicon and Intel) and **Linux** (x86_64 and aarch64). Windows is not supported (WSL works); see [building](docs/building.md). The engine's source is in [engine/](engine), so you can also build it yourself.
 
 ### Scope and configuration
 
@@ -38,9 +38,15 @@ From a shell, the equivalent configuration interface is:
 printf '%s\n' '{"scan_root":"/path/to/projects"}' | claude plugin configure memory@decode-plugins --values-stdin
 ```
 
-Downloaded binaries and indexes live in `CLAUDE_PLUGIN_DATA`, which survives plugin updates. The verified standalone executable is also atomically published at `~/.local/share/decode-plugins/bin/semantic-mcp` for sharing between plugins. Memory first detects the newest executable in a standard Decode VS Code extension installation; otherwise it uses the shared standalone executable, downloading the pinned release if needed. Semantic-search always uses the standalone release. `DECODE_PLUGINS_STANDALONE=1` disables Decode detection for isolated verification.
+Data is shared between Claude Code, Codex and Decode, so nothing is downloaded or indexed twice. It lives under `DECODE_PLUGINS_DATA` (default `~/.decode/plugin-data`):
 
-The index is local to each plugin's data directory; no account, project notes, source files, or credentials are distributed with this repository. On first use, the engine may download its embedding model. Release downloads use `gh release download`, pin a version, and verify the release's SHA-256 checksum before execution. A checksum authenticates integrity relative to this release, not a separate signing identity.
+- `bin/<release>/rsemble-<platform>`: the engine binary.
+- `memory/`: the notes index and embedding model, the same folder Decode's own notes search uses.
+- `semantic-search/`: the code index and model, used only when Decode is not installed. With Decode installed in VS Code, semantic-search reads and updates Decode's own semantic index in its VS Code global storage (`~/Library/Application Support/Code/User/globalStorage/ultra.decode` on macOS, `~/.config/Code/User/globalStorage/ultra.decode` on Linux), so a project Decode already indexed is ready at once. Setting `DECODE_PLUGINS_DATA` keeps everything under that folder instead.
+
+The past-chat index below stays per harness, in the plugin's own data folder.
+
+Indexes stay on this machine; no account, project notes, source files, or credentials are distributed with this repository. On first use, the engine downloads its embedding model from Hugging Face. Release downloads pin a version and verify the release's SHA-256 checksum before execution. A checksum authenticates integrity relative to this repository's release, not a separate signing identity.
 
 ### Optional: search this harness's past chats
 
@@ -83,7 +89,7 @@ codex plugin add semantic-search@decode-plugins
 codex plugin add memory@decode-plugins
 ```
 
-Codex does not use the Claude dependency declaration, so install both explicitly. Set `DECODE_PLUGINS_SCAN_ROOT` and `DECODE_PLUGINS_SCAN_ROOT_2` in the Codex process environment for optional additional roots; the default is still current-project only. `CLAUDE_PLUGIN_DATA` is optional outside Claude; the launcher then uses the standard user cache directory. The same scope warning applies: semantic-search scans ALL SOURCE CODE beneath those roots; broad scans may take minutes and use substantial disk space. Memory performs cheap NOTES-only scans. Codex uses these environment variables rather than Claude's `userConfig` fields.
+Codex does not use the Claude dependency declaration, so install both explicitly. Set `DECODE_PLUGINS_SCAN_ROOT` and `DECODE_PLUGINS_SCAN_ROOT_2` in the Codex process environment for optional additional roots; the default is still current-project only. `CLAUDE_PLUGIN_DATA` is optional outside Claude; the past-chat index then lives in the standard user cache directory. The same scope warning applies: semantic-search scans ALL SOURCE CODE beneath those roots; broad scans may take minutes and use substantial disk space. Memory performs cheap NOTES-only scans. Codex uses these environment variables rather than Claude's `userConfig` fields.
 
 ### MCP approval
 
@@ -145,7 +151,7 @@ claude plugin validate plugins/memory --strict
 claude plugin validate plugins/semantic-search --strict
 ```
 
-[scripts/semantic-mcp.sh](scripts/semantic-mcp.sh) is the canonical release bootstrap. After editing it, run `python3 scripts/sync-launchers.py` to package identical copies into the independently cached plugin roots. The checker rejects stale copies. Launcher fixtures exercise authenticated download, caching, checksum rejection, concurrent startup, Decode preference, shared standalone fallback, and safe path/scan arguments. Hook fixtures use real Git commits and native transcript shapes.
+[scripts/rsemble.sh](scripts/rsemble.sh) is the canonical release bootstrap. After editing it, run `python3 scripts/sync-launchers.py` to package identical copies into the independently cached plugin roots. The checker rejects stale copies. Launcher fixtures exercise `gh` and public download, caching, checksum rejection, concurrent startup, the shared data layout, Decode's index, and safe path/scan arguments. Hook fixtures use real Git commits and native transcript shapes.
 
 [The packaged memory hook](plugins/memory/hooks/flush-hooks.sh) is the canonical
 hook source. If it is also deployed into another local plugin, check that copy
@@ -155,6 +161,6 @@ The check fails on byte drift; the native hook tests also accept
 fixtures. Codex 0.169 code-mode work is detected from completed command and
 file-change events, never by executing or interpreting transcript JavaScript.
 
-For isolated installation, set `CLAUDE_CONFIG_DIR` and `CODEX_HOME` to disposable directories. Codex also discovers home-wide instructions independently of `CODEX_HOME`; use a disposable home when verifying that only packaged content loads. Never replace a real user configuration with a test fixture. [Release and source access](docs/building.md) documents the private-source build options and unsupported platforms. [Trial verification](docs/verification.md) records the tested versions, real runtime evidence, and remaining boundaries.
+For isolated installation, set `CLAUDE_CONFIG_DIR` and `CODEX_HOME` to disposable directories. Codex also discovers home-wide instructions independently of `CODEX_HOME`; use a disposable home when verifying that only packaged content loads. Never replace a real user configuration with a test fixture. [Building and releasing](docs/building.md) documents the engine source, the release workflow and Windows. [Trial verification](docs/verification.md) records the tested versions, real runtime evidence, and remaining boundaries.
 
 References: [Claude dependencies](https://code.claude.com/docs/en/plugins/dependencies), [Claude manifest reference](https://code.claude.com/docs/en/plugins-reference), [Codex plugin packaging](https://developers.openai.com/plugins/build/plugins).

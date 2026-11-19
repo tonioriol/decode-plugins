@@ -1,0 +1,3 @@
+The engine under engine/ is a Rust port of MinishLab Semble (MIT) and credits Roo Code (Apache-2.0); see
+engine/rsemble/NOTICE and engine/rsemble-core/NOTICE. Release binaries ship with THIRD-PARTY-LICENSES.txt,
+generated from engine/Cargo.lock.
