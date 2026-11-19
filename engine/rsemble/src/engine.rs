@@ -122,6 +122,19 @@ impl Engine {
         docs_only: bool,
         progress: Progress<'_>,
     ) -> io::Result<Vec<Found>> {
+        self.search_sources_in(sources, query, limit, docs_only, progress, None)
+    }
+
+    /// Searches the same source indexes, but ranks only files under `scope` when it is set.
+    pub(crate) fn search_sources_in(
+        &self,
+        sources: &[Source],
+        query: &str,
+        limit: usize,
+        docs_only: bool,
+        progress: Progress<'_>,
+        scope: Option<&Path>,
+    ) -> io::Result<Vec<Found>> {
         let exclusions = Exclusions::new(&[]).map_err(io::Error::other)?;
         let mut listed = Vec::with_capacity(sources.len());
         for (done, source) in sources.iter().enumerate() {
@@ -155,16 +168,28 @@ impl Engine {
             progress("saving indexes", changed.len(), changed.len());
         }
         let names: Vec<String> = (0..listed.len()).map(|position| position.to_string()).collect();
+        let prefixes: Vec<Option<String>> = listed
+            .iter()
+            .map(|(root, _)| {
+                scope
+                    .and_then(|path| path.strip_prefix(root).ok())
+                    .map(|path| path.to_string_lossy().replace('\\', "/"))
+            })
+            .collect();
         let searched: Vec<SearchSource<'_>> = listed
             .iter()
             .zip(sources)
             .zip(&names)
-            .filter_map(|(((root, _), source), name)| {
+            .zip(&prefixes)
+            .filter_map(|((((root, _), source), name), prefix)| {
+                if scope.is_some() && prefix.is_none() {
+                    return None;
+                }
                 Some(SearchSource {
                     name,
                     index: indexes.get(root)?,
                     boost: source.boost,
-                    path_prefix: None,
+                    path_prefix: prefix.as_deref(),
                 })
             })
             .collect();

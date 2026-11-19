@@ -4,7 +4,7 @@
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 data=${DECODE_PLUGINS_DATA:-$HOME/.decode/plugin-data}
-args=(serve --storage "$data/memory" --project "${CLAUDE_PROJECT_DIR:-$PWD}" --folder memory --folder docs=0.5 --docs-only --tool search --description 'Search durable feature notes and documentation by meaning. Current project only unless additional scan roots are configured; pass workspace to rank it first, or project to filter. Covers only work that was written up: unless results fully answer the question asked, also search past chats (the harness'"'"'s own past-chat search, then its saved session transcripts on disk) before answering.')
+args=(serve --storage "$data/memory" --project "${CLAUDE_PROJECT_DIR:-$PWD}" --folder memory --folder docs=0.5 --docs-only --tool search --description 'Search feature notes (memory/) and project docs by meaning for what, why, and status questions. When you know the folder or file, pass path to rank only its contents. By default only the current project is indexed; with scan roots configured, pass workspace to boost its project or project to restrict the search. Frontmatter terms such as status: active or a tag influence ranking, not filtering. Ranked results give project and file:lines; use rg for exact patterns or complete lists. If the notes do not fully answer the question, also search past chats before answering.')
 for root in "${DECODE_PLUGINS_SCAN_ROOT:-}" "${DECODE_PLUGINS_SCAN_ROOT_2:-}"; do
   [[ -z $root ]] || args+=(--scan "$root")
 done

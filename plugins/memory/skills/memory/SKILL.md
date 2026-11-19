@@ -16,6 +16,14 @@ hashes come from the record. Mark a missing fact `<!-- not captured -->`
 rather than guessing; a wrong fact in memory is worse than a flagged gap.
 
 ## Find the memory
+For exact patterns (checkboxes, hashes, IDs) or exhaustive lists, run `rg`
+directly: ranked search cannot prove completeness.
+
+For what, why, and status questions, call `mcp--memory--search` before opening
+or grepping the notes, even when you know the feature folder or file: pass it as
+`path` (absolute or project-relative). Then read the matching `context.md` to
+verify the current state.
+
 Search `memory/` before creating anything; directories are timestamped, so
 listing gives recency. Update the matching feature when one exists. Store
 memory in the root workspace, not a reclone or worktree.
@@ -152,10 +160,8 @@ rules) and let the LOG entry cite that commit.
 
 ## Operate
 ### Query
-Search the notes first (the `search` tool, then the matching `context.md`) and
-answer from their verified current state, but only if they fully answer the
-question asked; a related note is not an answer. Otherwise search earlier
-conversations before answering or saying it is not recorded: use the harness's
+If the notes do not fully answer the question, search earlier conversations
+before answering or saying it is not recorded: use the harness's
 own past-chat search (it may call them agents, sessions or tasks); if it has
 none, errors or finds nothing, grep its saved session transcripts on disk
 (transcript folders are hidden and often git-ignored, so `rg` skips them: use

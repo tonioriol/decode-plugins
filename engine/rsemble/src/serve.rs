@@ -4,7 +4,8 @@
 //! Projects are the `--project` directories and the directories under each `--scan` root (to `--depth`, skipping
 //! hidden and `--skip` names) that hold the first `--folder`; each project's `--folder`s are its sources, weighted by
 //! their boost. The caller's project (the `workspace` argument, else the server's working directory) is boosted
-//! further, and `project` restricts a search to one project. The folder `.` is the project itself, listed as a
+//! further. `project` selects projects and `path` selects an indexed file or subtree before ranking.
+//! The folder `.` is the project itself, listed as a
 //! project (its parents' ignore files apply); a named folder is listed on its own. Indexes are built at startup and
 //! brought up to date before each search; the model is downloaded on first use.
 //!
@@ -22,7 +23,7 @@ use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use rsemble_core::Embedder;
 use serde_json::{Value, json};
 
-use crate::engine::{Engine, Found, Source};
+use crate::engine::{Engine, Found, Source, normalize};
 use crate::files::Ignores;
 use crate::mcp::{DEFAULT_LIMIT, MAX_LIMIT, Notifier};
 use crate::model::ensure_model;
@@ -256,6 +257,7 @@ struct Request {
     query: String,
     project: Option<String>,
     workspace: Option<PathBuf>,
+    path: Option<PathBuf>,
     limit: usize,
 }
 
@@ -338,8 +340,7 @@ impl Server {
         Ok(engine)
     }
 
-    /// The best `request.limit` chunks across the projects' folders (only the filtered project's when one is named),
-    /// the caller's project boosted.
+    /// The best `request.limit` chunks across the selected projects and path, the caller's project boosted.
     fn search(
         &self,
         engine: &Engine,
@@ -362,6 +363,21 @@ impl Server {
             None => (0..projects.len()).collect(),
         };
         let current = project_of(&projects, request.workspace.as_deref().unwrap_or(&self.cwd));
+        let scope = request.path.as_deref().map(|path| {
+            let path = if path.is_absolute() {
+                path.to_path_buf()
+            } else {
+                let project = match request.project {
+                    Some(_) if chosen.len() == 1 => chosen.first().copied(),
+                    Some(_) => None,
+                    None => current,
+                };
+                project.and_then(|position| projects.get(position)).ok_or(
+                    "A relative path needs one project: pass a unique project, set workspace to an indexed project, or use an absolute path.",
+                )?.dir.join(path)
+            };
+            normalize(&path).map_err(|error| error.to_string())
+        }).transpose()?;
         let mut sources = Vec::new();
         let mut owners = Vec::new();
         for position in chosen {
@@ -395,7 +411,14 @@ impl Server {
         }
         let limit = request.limit.clamp(1, MAX_LIMIT);
         let found = engine
-            .search_sources(&sources, &request.query, limit, self.options.docs_only, progress)
+            .search_sources_in(
+                &sources,
+                &request.query,
+                limit,
+                self.options.docs_only,
+                progress,
+                scope.as_deref(),
+            )
             .map_err(|error| error.to_string())?;
         Ok(found
             .into_iter()
@@ -434,6 +457,7 @@ impl Server {
                     "query": {"type": "string", "description": "What to find, in natural language or keywords."},
                     "project": {"type": "string", "description": "Only search this project: its name as results show it, or a path inside it."},
                     "workspace": {"type": "string", "description": "Absolute path of your current workspace; its project ranks higher."},
+                    "path": {"type": "string", "description": "Only rank hits in this indexed folder or file. Use an absolute path or a path relative to the named project (otherwise to the workspace's project)."},
                     "limit": {"type": "integer", "minimum": 1, "maximum": MAX_LIMIT, "description": format!("Results to return (default {DEFAULT_LIMIT}).")}
                 },
                 "required": ["query"]
@@ -464,6 +488,7 @@ impl Server {
                 query,
                 project: text("project"),
                 workspace: text("workspace").map(PathBuf::from),
+                path: text("path").map(PathBuf::from),
                 limit: arguments
                     .get("limit")
                     .and_then(Value::as_u64)
@@ -666,6 +691,7 @@ mod tests {
                 project: project.map(str::to_owned),
                 workspace: Some(root.join(workspace)),
                 limit: 10,
+                ..Request::default()
             };
             server
                 .search(&engine, &request, &|_, _, _| {})
@@ -706,6 +732,53 @@ mod tests {
                     &|_, _, _| {}
                 )
                 .is_err()
+        );
+    }
+
+    #[test]
+    fn a_path_scopes_mcp_results_before_the_limit() {
+        let home = tempfile::tempdir().unwrap();
+        let root = home.path().canonicalize().unwrap();
+        let note = "# Deploy\n\nThe deploy pipeline uploads the bundle to the bucket.\n";
+        for file in [
+            "code/alpha/notes/topic/context.md",
+            "code/alpha/notes/topic/nested/plan.md",
+            "code/alpha/notes/topic-other/context.md",
+            "code/beta/notes/topic/context.md",
+            "code/beta/notes/topic/nested/plan.md",
+        ] {
+            write(&root, file, note);
+        }
+        let server = Server::new(
+            options(&root, &["--current-boost", "10"]),
+            root.clone(),
+            root.join("code/beta"),
+            Some(engine(&root.join("data"))),
+        );
+        server.warmup.finish();
+        let call = |filters: Value| {
+            let mut arguments = json!({"query": "deploy bundle", "limit": 2});
+            arguments
+                .as_object_mut()
+                .unwrap()
+                .extend(filters.as_object().unwrap().clone());
+            let reply = server.handle(
+                &json!({"id": 1, "method": "tools/call", "params": {"name": "search", "arguments": arguments}}),
+                &mut Vec::new(),
+            ).unwrap();
+            assert_eq!(reply["result"]["isError"], false, "{reply}");
+            reply["result"]["content"][0]["text"].as_str().unwrap().to_owned()
+        };
+        let global = call(json!({}));
+        assert_eq!(global.matches("[beta]").count(), 2, "{global}");
+        let scoped = call(json!({"path": root.join("code/alpha/notes/topic")}));
+        assert_eq!(scoped.matches("[alpha]").count(), 2, "{scoped}");
+        assert!(scoped.contains("/topic/context.md:"), "{scoped}");
+        assert!(scoped.contains("/topic/nested/plan.md:"), "{scoped}");
+        let file = call(json!({"project": "alpha", "path": "notes/topic/context.md"}));
+        assert!(
+            file.starts_with("1 results") && file.contains("[alpha]"),
+            "{file}"
         );
     }
 
