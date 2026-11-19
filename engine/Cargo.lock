@@ -238,6 +238,58 @@ dependencies = [
 ]
 
 [[package]]
+name = "decode-semantic"
+version = "0.1.0"
+dependencies = [
+ "decode-semantic-core",
+ "ignore",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "ureq",
+]
+
+[[package]]
+name = "decode-semantic-core"
+version = "0.1.0"
+dependencies = [
+ "cc",
+ "globset",
+ "memmap2",
+ "model2vec-rs",
+ "regex",
+ "serde",
+ "serde_json",
+ "tokenizers",
+ "tree-sitter",
+ "tree-sitter-bash",
+ "tree-sitter-c",
+ "tree-sitter-c-sharp",
+ "tree-sitter-cpp",
+ "tree-sitter-css",
+ "tree-sitter-dart-orchard",
+ "tree-sitter-elixir",
+ "tree-sitter-go",
+ "tree-sitter-haskell",
+ "tree-sitter-html",
+ "tree-sitter-java",
+ "tree-sitter-javascript",
+ "tree-sitter-kotlin-sg",
+ "tree-sitter-language",
+ "tree-sitter-lua",
+ "tree-sitter-md",
+ "tree-sitter-ocaml",
+ "tree-sitter-php",
+ "tree-sitter-python",
+ "tree-sitter-ruby",
+ "tree-sitter-rust",
+ "tree-sitter-solidity",
+ "tree-sitter-swift",
+ "tree-sitter-typescript",
+ "tree-sitter-zig",
+]
+
+[[package]]
 name = "derive_builder"
 version = "0.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -883,58 +935,6 @@ dependencies = [
  "libc",
  "untrusted",
  "windows-sys 0.52.0",
-]
-
-[[package]]
-name = "rsemble"
-version = "0.1.0"
-dependencies = [
- "ignore",
- "rsemble-core",
- "serde_json",
- "sha2",
- "tempfile",
- "ureq",
-]
-
-[[package]]
-name = "rsemble-core"
-version = "0.1.0"
-dependencies = [
- "cc",
- "globset",
- "memmap2",
- "model2vec-rs",
- "regex",
- "serde",
- "serde_json",
- "tokenizers",
- "tree-sitter",
- "tree-sitter-bash",
- "tree-sitter-c",
- "tree-sitter-c-sharp",
- "tree-sitter-cpp",
- "tree-sitter-css",
- "tree-sitter-dart-orchard",
- "tree-sitter-elixir",
- "tree-sitter-go",
- "tree-sitter-haskell",
- "tree-sitter-html",
- "tree-sitter-java",
- "tree-sitter-javascript",
- "tree-sitter-kotlin-sg",
- "tree-sitter-language",
- "tree-sitter-lua",
- "tree-sitter-md",
- "tree-sitter-ocaml",
- "tree-sitter-php",
- "tree-sitter-python",
- "tree-sitter-ruby",
- "tree-sitter-rust",
- "tree-sitter-solidity",
- "tree-sitter-swift",
- "tree-sitter-typescript",
- "tree-sitter-zig",
 ]
 
 [[package]]

@@ -8,4 +8,4 @@ args=(serve --storage "$data/memory" --project "${CLAUDE_PROJECT_DIR:-$PWD}" --f
 for root in "${DECODE_PLUGINS_SCAN_ROOT:-}" "${DECODE_PLUGINS_SCAN_ROOT_2:-}"; do
   [[ -z $root ]] || args+=(--scan "$root")
 done
-exec "$here/rsemble.sh" "${args[@]}" "$@"
+exec "$here/decode-semantic.sh" "${args[@]}" "$@"

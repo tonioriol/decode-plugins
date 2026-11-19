@@ -1006,7 +1006,7 @@ mod tests {
         let written = bytes(&original);
         let footer = written.len() - super::FOOTER;
         assert_eq!(super::u64_at(&written, footer + 8) % 4, 3);
-        let path = std::env::temp_dir().join(format!("rsemble_misaligned_{}", std::process::id()));
+        let path = std::env::temp_dir().join(format!("decode_semantic_misaligned_{}", std::process::id()));
         std::fs::write(&path, &written).unwrap();
         let blob = Arc::new(CountedBlob {
             inner: File::open(&path).unwrap(),

@@ -15,7 +15,7 @@ Run these two commands in Claude Code:
 /plugin install memory@decode-plugins
 ```
 
-Use a recent Claude Code with plugin dependency and `userConfig` support. Development validation uses Claude Code 2.1.316. The first search downloads the pinned `rsemble` release binary with `curl` (or `gh` when it is signed in). Install Bash, curl and Python 3; the memory hooks also require Git, jq, and ripgrep.
+Use a recent Claude Code with plugin dependency and `userConfig` support. Development validation uses Claude Code 2.1.316. The first search downloads the pinned `decode-semantic` release binary with `curl` (or `gh` when it is signed in). Install Bash, curl and Python 3; the memory hooks also require Git, jq, and ripgrep.
 
 Release binaries cover **macOS** (Apple Silicon and Intel) and **Linux** (x86_64 and aarch64). Windows is not supported (WSL works); see [building](docs/building.md). The engine's source is in [engine/](engine), so you can also build it yourself.
 
@@ -40,7 +40,7 @@ printf '%s\n' '{"scan_root":"/path/to/projects"}' | claude plugin configure memo
 
 Data is shared between Claude Code, Codex and Decode, so nothing is downloaded or indexed twice. It lives under `DECODE_PLUGINS_DATA` (default `~/.decode/plugin-data`):
 
-- `bin/<release>/rsemble-<platform>`: the engine binary.
+- `bin/<release>/decode-semantic-<platform>`: the engine binary.
 - `memory/`: the notes index and embedding model, the same folder Decode's own notes search uses.
 - `semantic-search/`: the code index and model, used only when Decode is not installed. With Decode installed in VS Code, semantic-search reads and updates Decode's own semantic index in its VS Code global storage (`~/Library/Application Support/Code/User/globalStorage/ultra.decode` on macOS, `~/.config/Code/User/globalStorage/ultra.decode` on Linux), so a project Decode already indexed is ready at once. Setting `DECODE_PLUGINS_DATA` keeps everything under that folder instead.
 
@@ -151,7 +151,7 @@ claude plugin validate plugins/memory --strict
 claude plugin validate plugins/semantic-search --strict
 ```
 
-[scripts/rsemble.sh](scripts/rsemble.sh) is the canonical release bootstrap. After editing it, run `python3 scripts/sync-launchers.py` to package identical copies into the independently cached plugin roots. The checker rejects stale copies. Launcher fixtures exercise `gh` and public download, caching, checksum rejection, concurrent startup, the shared data layout, Decode's index, and safe path/scan arguments. Hook fixtures use real Git commits and native transcript shapes.
+[scripts/decode-semantic.sh](scripts/decode-semantic.sh) is the canonical release bootstrap. After editing it, run `python3 scripts/sync-launchers.py` to package identical copies into the independently cached plugin roots. The checker rejects stale copies. Launcher fixtures exercise `gh` and public download, caching, checksum rejection, concurrent startup, the shared data layout, Decode's index, and safe path/scan arguments. Hook fixtures use real Git commits and native transcript shapes.
 
 [The packaged memory hook](plugins/memory/hooks/flush-hooks.sh) is the canonical
 hook source. If it is also deployed into another local plugin, check that copy

@@ -29,5 +29,5 @@ owner=$$
 refresher=$!
 trap 'kill "$refresher" 2>/dev/null || true' EXIT
 
-"$here/rsemble.sh" serve --storage "$chats" --scan "$corpus" --depth 1 --folder chats --docs-only --tool search_chats \
+"$here/decode-semantic.sh" serve --storage "$chats" --scan "$corpus" --depth 1 --folder chats --docs-only --tool search_chats \
   --description "Search past ${harness} conversations by meaning. Indexed: user and assistant text only (tool calls, tool output and reasoning are not). Each hit is a path:lines range of a text extract. The first lines of that file name the session and its source transcript; the '## mN role (line L, time)' headers give the message position, with L the line in the source transcript. To read around a hit, read a wider line range of the extract file; read the source transcript at line L when you need the tool calls. Pass project (the folder name shown in brackets) to filter, or workspace to rank a project first."

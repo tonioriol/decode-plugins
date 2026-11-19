@@ -8,7 +8,7 @@ use std::io::{BufRead, Write};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use rsemble_core::Embedder;
+use decode_semantic_core::Embedder;
 use serde_json::{Value, json};
 
 use crate::engine::{Engine, Found};
@@ -181,7 +181,7 @@ impl Server {
             "initialize" => Ok(json!({
                 "protocolVersion": params.get("protocolVersion").cloned().unwrap_or_else(|| json!("2025-06-18")),
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "rsemble", "version": env!("CARGO_PKG_VERSION")}
+                "serverInfo": {"name": "decode-semantic", "version": env!("CARGO_PKG_VERSION")}
             })),
             "ping" => Ok(json!({})),
             "tools/list" => Ok(json!({"tools": [Self::tool()]})),
@@ -249,7 +249,7 @@ fn serve_with_engine(config: Config, engine: Engine, input: &str) -> Vec<Value> 
 mod tests {
     use std::fs;
 
-    use rsemble_core::test_embedder;
+    use decode_semantic_core::test_embedder;
 
     use super::*;
 
@@ -288,7 +288,7 @@ mod tests {
         let replies = serve_with_engine(config, engine, &input);
 
         let by_id = |id: u64| replies.iter().find(|reply| reply["id"] == id).unwrap();
-        assert_eq!(by_id(1)["result"]["serverInfo"]["name"], "rsemble");
+        assert_eq!(by_id(1)["result"]["serverInfo"]["name"], "decode-semantic");
         assert_eq!(by_id(2)["result"]["tools"][0]["name"], "search");
         let text = by_id(3)["result"]["content"][0]["text"].as_str().unwrap();
         assert!(text.contains("deploy.md:1-"), "{text}");

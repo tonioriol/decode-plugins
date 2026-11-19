@@ -8,10 +8,12 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use rsemble_core::model_assets::{CODE_MODEL_FILES, code_model_base_url};
+use decode_semantic_core::model_assets::{CODE_MODEL_FILES, code_model_base_url};
 use sha2::{Digest, Sha256};
 
-pub use rsemble_core::model_assets::{CODE_MODEL_REVISION as MODEL_REVISION, code_model_dir as model_dir};
+pub use decode_semantic_core::model_assets::{
+    CODE_MODEL_REVISION as MODEL_REVISION, code_model_dir as model_dir,
+};
 /// Hosts a download may be redirected to.
 const TRUSTED_DOMAINS: &[&str] = &["huggingface.co", "hf.co"];
 /// Cap on one model file.

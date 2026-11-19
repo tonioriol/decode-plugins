@@ -19,8 +19,8 @@ fn main() {
     ] {
         build.define(
             &format!("tree_sitter_vue{suffix}"),
-            format!("rsemble_tree_sitter_vue{suffix}").as_str(),
+            format!("decode_semantic_tree_sitter_vue{suffix}").as_str(),
         );
     }
-    build.compile("rsemble-tree-sitter-vue");
+    build.compile("decode-semantic-tree-sitter-vue");
 }

@@ -1,6 +1,6 @@
 [package]
-name = "rsemble"
-description = "Command-line semantic code search and a stdio MCP server over rsemble-core."
+name = "decode-semantic"
+description = "Command-line semantic code search and a stdio MCP server over decode-semantic-core."
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.88"
@@ -25,20 +25,20 @@ wildcard_imports = "deny"
 allow_attributes_without_reason = "deny"
 
 [lib]
-name = "rsemble"
+name = "decode_semantic"
 path = "src/lib.rs"
 
 [[bin]]
-name = "rsemble"
+name = "decode-semantic"
 path = "src/main.rs"
 
 [dependencies]
-rsemble-core = { path = "../rsemble-core", version = "0.1.0" }
+decode-semantic-core = { path = "../decode-semantic-core", version = "0.1.0" }
 ignore = "0.4"
 serde_json = "1"
 sha2 = "0.11"
 ureq = "2"
 
 [dev-dependencies]
-rsemble-core = { path = "../rsemble-core", version = "0.1.0", features = ["test-util"] }
+decode-semantic-core = { path = "../decode-semantic-core", version = "0.1.0", features = ["test-util"] }
 tempfile = "3"

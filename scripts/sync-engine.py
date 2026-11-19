@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Mirror the rsemble engine crates from a commit of the Decode repository into engine/.
+"""Mirror the Decode Semantic engine crates from a commit of the Decode repository into engine/.
 
     scripts/sync-engine.py --decode <checkout> [--rev <commit>]
 
-Copies the committed rsemble-core and rsemble crates (never uncommitted edits), writes the
+Copies the committed decode-semantic-core and decode-semantic crates (never uncommitted edits), writes the
 workspace manifest they need and derives
 engine/Cargo.lock from Decode's lock file so the mirror builds the dependency versions Decode
 tests. Run it, review the diff, commit.
@@ -16,7 +16,7 @@ import shutil
 import subprocess
 import tarfile
 
-CRATES = ("rsemble-core", "rsemble")
+CRATES = ("decode-semantic-core", "decode-semantic")
 root = pathlib.Path(__file__).resolve().parent.parent
 engine = root / "engine"
 

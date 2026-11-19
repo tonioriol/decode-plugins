@@ -1,7 +1,7 @@
 //! One persisted index per folder, kept in step with its files before each search.
 //!
 //! The index of a folder is the file `<index dir>/<model revision>/<SHA-256 of the folder's path>.bin`, the name and
-//! format Decode gives it, so Decode and rsemble pointed at the same index folder keep one index per folder.
+//! format Decode gives it, so Decode and Decode Semantic pointed at the same index folder keep one index per folder.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -9,7 +9,7 @@ use std::io;
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
-use rsemble_core::{
+use decode_semantic_core::{
     Embedder, Exclusions, FileStamp, PreparedFile, SearchSource, SourceIndex, changes, search,
 };
 use sha2::{Digest, Sha256};
@@ -234,7 +234,7 @@ impl Engine {
             Err(error) => {
                 drop(fs::remove_file(&tmp));
                 eprintln!(
-                    "rsemble: could not persist the index of {}: {error}",
+                    "decode-semantic: could not persist the index of {}: {error}",
                     root.display()
                 );
             }
@@ -313,7 +313,7 @@ fn update(
 
 #[cfg(test)]
 mod tests {
-    use rsemble_core::test_embedder;
+    use decode_semantic_core::test_embedder;
 
     use super::*;
 

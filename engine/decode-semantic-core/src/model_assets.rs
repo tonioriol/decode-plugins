@@ -1,4 +1,4 @@
-//! Model assets shared by the rsemble CLI and Decode's code and notes search.
+//! Model assets shared by the decode-semantic CLI and Decode's code and notes search.
 
 use std::path::{Path, PathBuf};
 

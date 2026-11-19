@@ -1,6 +1,6 @@
-# rsemble-core
+# decode-semantic-core
 
-Semantic code search engine, part of **rsemble**, a Rust port of [MinishLab Semble](https://github.com/MinishLab/semble).
+Semantic code search engine, part of **Decode Semantic**, a Rust port of [MinishLab Semble](https://github.com/MinishLab/semble).
 
 Provides tree-sitter chunking, model2vec embeddings, BM25, and hybrid ranking.
 

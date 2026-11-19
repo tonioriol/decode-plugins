@@ -1,4 +1,4 @@
-# Builds the rsemble engine in engine/ for every supported platform and publishes a release with
+# Builds the Decode Semantic engine in engine/ for every supported platform and publishes a release with
 # SHA256SUMS and the licence notices. Runs on a v* tag push, or by hand to rebuild a tag.
 name: release
 
@@ -62,14 +62,14 @@ jobs:
         run: cargo test --locked --release
       - name: Build
         working-directory: engine
-        run: cargo build --locked --release --bin rsemble --target ${{ matrix.target }}
+        run: cargo build --locked --release --bin decode-semantic --target ${{ matrix.target }}
       - name: Stage
         run: |
           mkdir dist
-          cp engine/target/${{ matrix.target }}/release/rsemble dist/rsemble-${{ matrix.target }}
+          cp engine/target/${{ matrix.target }}/release/decode-semantic dist/decode-semantic-${{ matrix.target }}
       - uses: actions/upload-artifact@v4
         with:
-          name: rsemble-${{ matrix.target }}
+          name: decode-semantic-${{ matrix.target }}
           path: dist/*
           if-no-files-found: error
 
@@ -92,21 +92,21 @@ jobs:
         run: |
           cargo about generate --locked --fail about.hbs -o ../dist/THIRD-PARTY-LICENSES.txt
           printf '\n================================================================================\nVendored tree-sitter-vue (MIT)\n--------------------------------------------------------------------------------\n' >> ../dist/THIRD-PARTY-LICENSES.txt
-          cat rsemble-core/grammars/vue/LICENSE >> ../dist/THIRD-PARTY-LICENSES.txt
-          cp rsemble/LICENSE ../dist/LICENSE
-          cat rsemble/NOTICE > ../dist/NOTICE
+          cat decode-semantic-core/grammars/vue/LICENSE >> ../dist/THIRD-PARTY-LICENSES.txt
+          cp decode-semantic/LICENSE ../dist/LICENSE
+          cat decode-semantic/NOTICE > ../dist/NOTICE
       - name: Checksums
         working-directory: dist
         run: |
-          chmod +x rsemble-*
-          sha256sum rsemble-* LICENSE NOTICE THIRD-PARTY-LICENSES.txt > SHA256SUMS
+          chmod +x decode-semantic-*
+          sha256sum decode-semantic-* LICENSE NOTICE THIRD-PARTY-LICENSES.txt > SHA256SUMS
           cat SHA256SUMS
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           source=$(cat engine/SOURCE)
-          notes="rsemble built from engine/ at $(git rev-parse HEAD) ($source)."
+          notes="Decode Semantic built from engine/ at $(git rev-parse HEAD) ($source)."
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/* --clobber
           else

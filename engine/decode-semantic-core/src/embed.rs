@@ -393,7 +393,7 @@ mod tests {
             ("weights", "F16", vec![7], f16_weights),
         ]);
         let config = br#"{"normalize": true}"#;
-        let dir = std::env::temp_dir().join(format!("rsemble_embed_load_{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("decode_semantic_embed_load_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("tokenizer.json"), &tokenizer).unwrap();
         std::fs::write(dir.join("config.json"), config).unwrap();

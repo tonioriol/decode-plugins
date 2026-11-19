@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / '.agent-runs' / 'launcher-tests'
 FIXTURES.mkdir(parents=True, exist_ok=True)
 RELEASE = 'v0.3.0'
-ASSET = 'rsemble-aarch64-apple-darwin'
+ASSET = 'decode-semantic-aarch64-apple-darwin'
 FAKE_BINARY = b'#!/usr/bin/env python3\nimport json,sys\nprint(json.dumps(sys.argv[1:]))\n'
 # Writes the release files the way gh (into --dir) or curl (to -o) would, logging each call.
 FAKE_DOWNLOAD = '''#!/usr/bin/env python3
@@ -27,7 +27,7 @@ if os.environ.get('DOWNLOAD_FAIL'): raise SystemExit(1)
 if os.environ.get('DOWNLOAD_HANG'): __import__('time').sleep(60)
 binary = %r
 digest = '0' * 64 if os.environ.get('BAD_CHECKSUM') else hashlib.sha256(binary).hexdigest()
-asset = 'rsemble-' + {'Darwin': 'aarch64-apple-darwin', 'Linux': 'aarch64-unknown-linux-gnu'}[os.popen('uname -s').read().strip()]
+asset = 'decode-semantic-' + {'Darwin': 'aarch64-apple-darwin', 'Linux': 'aarch64-unknown-linux-gnu'}[os.popen('uname -s').read().strip()]
 files = {asset: binary, 'SHA256SUMS': (digest + '  ' + asset + '\\n').encode()}
 if tool == 'gh':
     out = pathlib.Path(args[args.index('--dir') + 1])
@@ -158,7 +158,7 @@ class Launchers(unittest.TestCase):
         decode.mkdir(parents=True)
         args = self.args(XDG_CONFIG_HOME=str(config), AUTH_FAIL='1')
         self.assertEqual(self.values(args, '--index'), [str(decode / 'semantic-index')])
-        self.assertIn('rsemble-aarch64-unknown-linux-gnu', self.log.read_text())
+        self.assertIn('decode-semantic-aarch64-unknown-linux-gnu', self.log.read_text())
 
     def test_chats_index_stays_per_harness_and_reuses_the_notes_model(self):
         model = self.data / 'memory/semble-model-rev'

@@ -1,23 +1,23 @@
-//! `rsemble`: semantic code search from the command line, and as an MCP server.
+//! `decode-semantic`: semantic code search from the command line, and as an MCP server.
 
 use std::io;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use rsemble::default_storage;
-use rsemble::engine::Engine;
-use rsemble::mcp::{self, DEFAULT_LIMIT, MAX_LIMIT};
-use rsemble::model::ensure_model;
-use rsemble::serve;
-use rsemble_core::Embedder;
+use decode_semantic::default_storage;
+use decode_semantic::engine::Engine;
+use decode_semantic::mcp::{self, DEFAULT_LIMIT, MAX_LIMIT};
+use decode_semantic::model::ensure_model;
+use decode_semantic::serve;
+use decode_semantic_core::Embedder;
 use serde_json::json;
 
 const USAGE: &str = "usage:
-  rsemble search <query> [--path <dir>]... [--limit <n>] [--docs-only] [--json] [--storage <dir>] [--index <dir>]
-  rsemble mcp [<dir>...] [--docs-only] [--storage <dir>] [--index <dir>]
-  rsemble serve --storage <dir> [--index <dir>] [--tool <name>] [--description <text>] [--scan <dir>]...
+  decode-semantic search <query> [--path <dir>]... [--limit <n>] [--docs-only] [--json] [--storage <dir>] [--index <dir>]
+  decode-semantic mcp [<dir>...] [--docs-only] [--storage <dir>] [--index <dir>]
+  decode-semantic serve --storage <dir> [--index <dir>] [--tool <name>] [--description <text>] [--scan <dir>]...
       [--depth <n>] [--skip <name>]... [--project <dir>]... --folder <name>[=<boost>]... [--docs-only] [--current-boost <x>]
-  rsemble model [--storage <dir>]
+  decode-semantic model [--storage <dir>]
 
 search   rank the chunks of the files under each --path (default: the current folder) for a query
 mcp      serve a stdio MCP server with one `search` tool over the folders given (default: the current folder)
@@ -129,7 +129,7 @@ fn run() -> Result<(), String> {
             let found = engine
                 .search(&roots, &query, limit, args.docs_only, &|stage, done, total| {
                     if done == total || done == 0 {
-                        eprintln!("rsemble: {stage} {done}/{total}");
+                        eprintln!("decode-semantic: {stage} {done}/{total}");
                     }
                 })
                 .map_err(|error| error.to_string())?;
@@ -152,7 +152,7 @@ fn main() -> ExitCode {
     match run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(message) => {
-            eprintln!("rsemble: {message}\n\n{USAGE}");
+            eprintln!("decode-semantic: {message}\n\n{USAGE}");
             ExitCode::from(2)
         }
     }

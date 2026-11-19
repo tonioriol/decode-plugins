@@ -27,7 +27,7 @@ impl MappedFile {
             return Ok(Self(None));
         }
         // SAFETY: SegmentWriter closes completed vectors.bin before Segment opens it; merges write new files
-        // and unlink old segments. Code/memory writers (including rsemble::Engine::persist) write
+        // and unlink old segments. Code/memory writers (including decode_semantic::Engine::persist) write
         // temporary files and rename them onto the published path. None overwrite or truncate a mapped inode.
         // The opened handle pins that inode, even if its path is concurrently replaced. Segment/SourceIndex's
         // shared base owns the read-only map for every snapshot; Unix retains its pages after unlink. Mutable
@@ -48,7 +48,7 @@ mod tests {
 
     #[test]
     fn mapped_rows_survive_unlink_and_replacement_of_the_segment_file() {
-        let dir = std::env::temp_dir().join(format!("rsemble_mapped_rows_{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("decode_semantic_mapped_rows_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("vectors.bin");
         let rows: Vec<u8> = (0..16385).map(|at| (at * 37 % 251) as u8).collect();
@@ -65,7 +65,7 @@ mod tests {
 
     #[test]
     fn empty_embedding_tables_open_but_truncated_tables_are_rejected() {
-        let path = std::env::temp_dir().join(format!("rsemble_mapped_empty_{}", std::process::id()));
+        let path = std::env::temp_dir().join(format!("decode_semantic_mapped_empty_{}", std::process::id()));
         std::fs::write(&path, []).unwrap();
         let empty = MappedFile::open(&File::open(&path).unwrap(), 0).unwrap();
         assert!(empty.bytes().is_empty());

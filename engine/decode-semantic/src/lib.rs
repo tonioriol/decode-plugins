@@ -1,4 +1,4 @@
-//! Semantic code search for the command line and for MCP clients, over the `rsemble-core` engine.
+//! Semantic code search for the command line and for MCP clients, over the `decode-semantic-core` engine.
 //!
 //! [`model`] fetches and verifies the embedding model, [`files`] lists the files of a folder worth indexing,
 //! [`engine`] keeps one persisted index per folder up to date and searches them, [`mcp`] serves that search

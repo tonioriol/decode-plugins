@@ -1,6 +1,6 @@
 [package]
-name = "rsemble-core"
-description = "Semantic code search engine: tree-sitter chunks, model2vec embeddings, BM25 and hybrid ranking (rsemble, a Rust port of MinishLab Semble)."
+name = "decode-semantic-core"
+description = "Semantic code search engine: tree-sitter chunks, model2vec embeddings, BM25 and hybrid ranking (Decode Semantic, a Rust port of MinishLab Semble)."
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.88"

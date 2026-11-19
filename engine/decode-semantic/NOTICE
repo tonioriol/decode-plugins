@@ -1,4 +1,4 @@
-rsemble-core is part of rsemble, a Rust port of MinishLab Semble (https://github.com/MinishLab/semble): the
+Decode Semantic is a Rust port of MinishLab Semble (https://github.com/MinishLab/semble): the
 chunking, the hybrid BM25 + static-embedding retrieval, the reciprocal-rank
 fusion, the ranking boosts and penalties, the language table and the ranking
 regular expressions follow Semble's design and code.
@@ -32,6 +32,11 @@ Citation requested by the Semble authors:
     van Dongen, Thomas and Tulkens, Stephan. "Semble: Fast and Accurate Code
     Search for Agents". Zenodo, 2026. doi:10.5281/zenodo.19785932
 
-The embedding models (minishlab/potion-code-16M-v2 and minishlab/potion-code-16M,
-both MIT) are not part of this repository. They are downloaded at first use
-from Hugging Face.
+The embedding model (minishlab/potion-code-16M-v2, MIT) is not part of this
+repository. It is downloaded at first use from Hugging Face.
+
+The list of dependency and build-output folders never indexed (src/files.rs,
+SKIPPED_DIRS) is the DIRS_TO_IGNORE list of Roo Code
+(https://github.com/RooCodeInc/Roo-Code, src/services/glob/constants.ts),
+Copyright Roo Code, Inc., licensed under the Apache License, Version 2.0
+(https://www.apache.org/licenses/LICENSE-2.0).

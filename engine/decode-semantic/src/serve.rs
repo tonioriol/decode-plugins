@@ -1,4 +1,4 @@
-//! `rsemble serve`: a stdio MCP server with one search tool over the same-named folders of many projects (say every
+//! `decode-semantic serve`: a stdio MCP server with one search tool over the same-named folders of many projects (say every
 //! project's `notes/`), searched together.
 //!
 //! Projects are the `--project` directories and the directories under each `--scan` root (to `--depth`, skipping
@@ -10,7 +10,7 @@
 //! brought up to date before each search; the model is downloaded on first use.
 //!
 //! ```text
-//! rsemble serve --storage <dir> [--index <dir>] [--tool search] [--description <text>] [--scan <dir>]...
+//! decode-semantic serve --storage <dir> [--index <dir>] [--tool search] [--description <text>] [--scan <dir>]...
 //!     [--depth 3] [--skip <name>]... [--project <dir>]... --folder <name>[=<boost>]... [--docs-only]
 //!     [--current-boost 1.5]
 //! ```
@@ -20,7 +20,7 @@ use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
 
-use rsemble_core::Embedder;
+use decode_semantic_core::Embedder;
 use serde_json::{Value, json};
 
 use crate::engine::{Engine, Found, Source, normalize};
@@ -28,8 +28,8 @@ use crate::files::Ignores;
 use crate::mcp::{DEFAULT_LIMIT, MAX_LIMIT, Notifier};
 use crate::model::ensure_model;
 
-/// How to call `rsemble serve`.
-pub const USAGE: &str = "rsemble serve --storage <dir> [--index <dir>] [--tool <name>] [--description <text>] [--scan <dir>]... [--depth <n>] [--skip <name>]... [--project <dir>]... --folder <name>[=<boost>]... [--docs-only] [--current-boost <x>]";
+/// How to call `decode-semantic serve`.
+pub const USAGE: &str = "decode-semantic serve --storage <dir> [--index <dir>] [--tool <name>] [--description <text>] [--scan <dir>]... [--depth <n>] [--skip <name>]... [--project <dir>]... --folder <name>[=<boost>]... [--docs-only] [--current-boost <x>]";
 
 /// One folder searched in every project, and how much its results weigh.
 #[derive(Debug, Clone, PartialEq)]
@@ -443,7 +443,7 @@ impl Server {
         });
         self.warmup.finish();
         if let Err(error) = outcome {
-            eprintln!("rsemble serve: warming the index failed: {error}");
+            eprintln!("decode-semantic serve: warming the index failed: {error}");
         }
     }
 
@@ -516,7 +516,7 @@ impl Server {
             "initialize" => Ok(json!({
                 "protocolVersion": params.get("protocolVersion").cloned().unwrap_or_else(|| json!("2025-06-18")),
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "rsemble", "version": env!("CARGO_PKG_VERSION")}
+                "serverInfo": {"name": "decode-semantic", "version": env!("CARGO_PKG_VERSION")}
             })),
             "ping" => Ok(json!({})),
             "tools/list" => Ok(json!({"tools": [self.tool()]})),
@@ -582,7 +582,7 @@ fn serve(server: &Server, stdin: &mut dyn BufRead, stdout: &mut dyn Write) {
 
 #[cfg(test)]
 mod tests {
-    use rsemble_core::test_embedder;
+    use decode_semantic_core::test_embedder;
 
     use super::*;
 

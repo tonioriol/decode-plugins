@@ -5,8 +5,8 @@ use std::io;
 use std::path::Path;
 use std::time::UNIX_EPOCH;
 
+use decode_semantic_core::{Exclusions, FileStamp, detect_language, is_doc_language};
 use ignore::WalkBuilder;
-use rsemble_core::{Exclusions, FileStamp, detect_language, is_doc_language};
 
 /// Semble `MAX_FILE_BYTES`: a larger file is never indexed.
 pub const MAX_FILE_BYTES: u64 = 1_000_000;
