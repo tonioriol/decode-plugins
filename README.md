@@ -69,7 +69,7 @@ Invoke `/memory:memory` to create, recall, or update feature notes. The workflow
 
 Hooks activate only for root sessions in projects that already contain `memory/`:
 
-- SessionStart injects a discovery rule and up to ten active/paused feature slugs. The rule and the skill tell agents to search the notes first and, when the notes do not fully answer, to search past chats with the harness's own search (or `search_chats` when the option above is on) before answering.
+- SessionStart injects a discovery rule, up to ten active/paused feature slugs, and up to three matching feature notes from the memory index (using the opening prompt on startup when the client provides it, and the latest user messages on compact or resume). The rule and the skill tell agents to search the notes first and, when the notes do not fully answer, to search past chats with the harness's own search (or `search_chats` when the option above is on) before answering.
 - Stop reminds once after confirmed work without a corresponding committed feature-note update.
 - PreCompact blocks until the note is committed. Claude's recovery compaction can still expose the underlying context-limit error; the hook is not a way around an API limit.
 
@@ -145,7 +145,7 @@ and [`/hooks` dispatch](https://github.com/openai/codex/blob/rust-v0.169.0/codex
 These steps connect both local MCP servers and install the existing `memory` skill. They configure OpenCode itself, so a frontend that runs OpenCode uses the same setup. Install the [dependencies listed above](#claude-code) and keep a checkout at a stable location:
 
 ```sh
-git clone --branch v0.3.0 https://github.com/tonioriol/decode-plugins.git "$HOME/decode-plugins"
+git clone --branch v0.3.1 https://github.com/tonioriol/decode-plugins.git "$HOME/decode-plugins"
 ```
 
 1. Check `opencode --version`. Use [the V1 snippet](clients/opencode/opencode-v1.json) for 1.x, or [the V2 snippet](clients/opencode/opencode-v2.json) for 2.x. Replace `/absolute/path/to/decode-plugins` with the checkout's full path; in the V1 `file://` URL, percent-encode spaces and other URI delimiters. Merge the snippet into the existing file instead of replacing unrelated settings. Pick one scope:
@@ -167,7 +167,7 @@ git clone --branch v0.3.0 https://github.com/tonioriol/decode-plugins.git "$HOME
 
 3. Restart OpenCode in the project. `opencode mcp list` should show both servers connected. In 1.x, `opencode debug skill` lists `memory`. Ask OpenCode to load the `memory` skill and try `memory_search` or `semantic-search_project_search`.
 
-The V1 snippet registers a local JS plugin via `plugin`. On the first user message in an empty top-level session with `memory/`, it uses `chat.message` to add the existing SessionStart guidance. An existing session, subagent, or project without `memory/` gets neither. V1 also exposes `session.created`, `session.idle`, and `experimental.session.compacting`; idle is a notification and compaction can augment the summary prompt, not defer compaction until a note is committed. The transcript-based Stop and PreCompact hooks are not installed. V2 has a different server plugin API (`session.hook("prompt" | "context" | "compaction", …)`); the V2 snippet installs the MCP servers only, with the skill available after the copy step above. No automatic session guidance, Stop, or PreCompact hooks are installed on V2.
+The V1 snippet registers a local JS plugin via `plugin`. On the first user message in an empty top-level session with `memory/`, it uses `chat.message` to pass the opening prompt to `session-start-index.sh` and add the SessionStart guidance and matching notes. An existing session, subagent, or project without `memory/` gets neither. V1 also exposes `session.created`, `session.idle`, and `experimental.session.compacting`; idle is a notification and compaction can augment the summary prompt, not defer compaction until a note is committed. The transcript-based Stop and PreCompact hooks are not installed. V2 has a different server plugin API (`session.hook("prompt" | "context" | "compaction", …)`); the V2 snippet installs the MCP servers only, with the skill available after the copy step above. No automatic session guidance, Stop, or PreCompact hooks are installed on V2.
 
 OpenCode discovers local JS/TS plugins globally in `~/.config/opencode/plugins/` and per project in `.opencode/plugins/`. V2 also has `opencode plugin add` for npm and npm-compatible Git packages, including the V2 plugin format via `plugins` in config. These Decode adapters are installed from the checkout as shown above, not published as an OpenCode package.
 
