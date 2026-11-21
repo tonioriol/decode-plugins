@@ -70,7 +70,6 @@ Invoke `/memory:memory` to create, recall, or update feature notes. The workflow
 Hooks activate only for root sessions in projects that already contain `memory/`:
 
 - SessionStart injects a discovery rule and up to ten active/paused feature slugs. The rule and the skill tell agents to search the notes first and, when the notes do not fully answer, to search past chats with the harness's own search (or `search_chats` when the option above is on) before answering.
-- UserPromptSubmit, on the first message of a session only, searches the notes for it and names the three best-matching note folders (about 0.2 s once the index is warm; nothing is added when the search fails).
 - Stop reminds once after confirmed work without a corresponding committed feature-note update.
 - PreCompact blocks until the note is committed. Claude's recovery compaction can still expose the underlying context-limit error; the hook is not a way around an API limit.
 
@@ -168,7 +167,7 @@ git clone --branch v0.3.0 https://github.com/tonioriol/decode-plugins.git "$HOME
 
 3. Restart OpenCode in the project. `opencode mcp list` should show both servers connected. In 1.x, `opencode debug skill` lists `memory`. Ask OpenCode to load the `memory` skill and try `memory_search` or `semantic-search_project_search`.
 
-The V1 snippet registers a local JS plugin via `plugin`. On the first user message in an empty top-level session with `memory/`, it uses `chat.message` to add the existing SessionStart guidance and first-prompt note matches. An existing session, subagent, or project without `memory/` gets neither. V1 also exposes `session.created`, `session.idle`, and `experimental.session.compacting`; idle is a notification and compaction can augment the summary prompt, not defer compaction until a note is committed. The transcript-based Stop and PreCompact hooks are not installed. V2 has a different server plugin API (`session.hook("prompt" | "context" | "compaction", …)`); the V2 snippet installs the MCP servers only, with the skill available after the copy step above. No automatic session guidance, ranked prompt hints, Stop, or PreCompact hooks are installed on V2.
+The V1 snippet registers a local JS plugin via `plugin`. On the first user message in an empty top-level session with `memory/`, it uses `chat.message` to add the existing SessionStart guidance. An existing session, subagent, or project without `memory/` gets neither. V1 also exposes `session.created`, `session.idle`, and `experimental.session.compacting`; idle is a notification and compaction can augment the summary prompt, not defer compaction until a note is committed. The transcript-based Stop and PreCompact hooks are not installed. V2 has a different server plugin API (`session.hook("prompt" | "context" | "compaction", …)`); the V2 snippet installs the MCP servers only, with the skill available after the copy step above. No automatic session guidance, Stop, or PreCompact hooks are installed on V2.
 
 OpenCode discovers local JS/TS plugins globally in `~/.config/opencode/plugins/` and per project in `.opencode/plugins/`. V2 also has `opencode plugin add` for npm and npm-compatible Git packages, including the V2 plugin format via `plugins` in config. These Decode adapters are installed from the checkout as shown above, not published as an OpenCode package.
 
@@ -197,7 +196,7 @@ These steps configure both MCP servers, the `memory` skill, and session-start gu
 
 4. Restart Cursor Agent or reload the editor, open a new session in the project, and check that `memory` and `semantic-search` are enabled in **Customize → MCP** (or run `agent mcp list` in the CLI). Ask the agent to use the `memory` skill, or select it from the `/` menu.
 
-The Cursor `sessionStart` adapter maps `session_id` and the single reported `workspace_roots` entry to the existing discovery hook, then returns its text as `additional_context`. It does nothing if Cursor does not report exactly one workspace root. Cursor's `beforeSubmitPrompt` can allow/block a prompt but does not return agent context, so no first-prompt note hint is installed. `stop` supports an automatic follow-up, not the existing transcript-based reminder. `preCompact` is observational and cannot postpone compaction. Neither is installed.
+The Cursor `sessionStart` adapter maps `session_id` and the single reported `workspace_roots` entry to the existing discovery hook, then returns its text as `additional_context`. It does nothing if Cursor does not report exactly one workspace root. Cursor's `beforeSubmitPrompt` can allow/block a prompt but does not return agent context. `stop` supports an automatic follow-up, not the existing transcript-based reminder. `preCompact` is observational and cannot postpone compaction. Neither is installed.
 
 Cursor supports its own plugin format and the Agent Plugins standard; official and team marketplaces install compatible bundles via **Customize**, and Cursor can load local development bundles if local imports are allowed. This repository does not publish a Cursor marketplace bundle: use the native config files above.
 

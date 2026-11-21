@@ -25,10 +25,6 @@ export const DecodeMemory = async ({ client, directory }) => ({
     const base = { cwd: directory, session_id: sessionID }
     const start = { ...base, hook_event_name: "SessionStart", source: "startup" }
     const guidance = run("session-start-index.sh", start)
-    run("prompt-notes.sh", start)
-    const prompt = output.parts.filter(p => p.type === "text" && !p.synthetic).map(p => p.text).join("\n")
-    const hint = run("prompt-notes.sh", { ...base, hook_event_name: "UserPromptSubmit", prompt })
-    const context = [guidance, hint && JSON.parse(hint).hookSpecificOutput.additionalContext].filter(Boolean).join("\n\n")
-    if (context) output.message.system = [output.message.system, context].filter(Boolean).join("\n\n")
+    if (guidance) output.message.system = [output.message.system, guidance].filter(Boolean).join("\n\n")
   },
 })

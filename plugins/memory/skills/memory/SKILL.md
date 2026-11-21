@@ -210,9 +210,6 @@ with `memory/`.
   (`active`/`paused`) features, most recently committed first, as directory slugs only
   (no timestamp prefix or filenames). Set `active` when you resume a feature and `paused`/`done` when its
   work stops, so this list stays accurate.
-- `prompt-notes.sh` (UserPromptSubmit): on the first message only, names up to
-  3 note folders the notes search ranks highest for it. A hint, not an answer:
-  read the context.md before relying on it.
 - `flush-hooks.sh` (Stop, PreCompact): work is a successful `git commit`, a
   saved edit outside `memory/` and `docs/`, or a completed subagent result in
   the transcript. It counts as flushed when git shows a commit touching a

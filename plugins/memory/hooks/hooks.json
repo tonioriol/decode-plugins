@@ -10,27 +10,6 @@
             "timeout": 10
           }
         ]
-      },
-      {
-        "matcher": "startup",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/prompt-notes.sh\"",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/prompt-notes.sh\"",
-            "timeout": 10
-          }
-        ]
       }
     ],
     "Stop": [
