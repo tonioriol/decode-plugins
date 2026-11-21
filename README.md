@@ -6,7 +6,7 @@ Code, Codex, OpenCode, and Cursor. It currently contains two plugins:
 - **semantic-search** exposes `project_search` for source code.
 - **memory** adds a durable feature-note workflow, the `search` MCP tool over `memory/` and `docs/`, and SessionStart, Stop, and PreCompact hooks. It declares `dependencies: ["semantic-search"]`, so Claude installs both.
 
-To measure how well notes, transcripts, past-chat search and code search answer questions about earlier work, with any harness and your own corpus, see the [memory recall eval](bench/memory).
+To measure how well notes, transcripts, past-chat search and code search answer questions about earlier work, with any harness and your own corpus, see the [memory recall eval](bench/memory). To reproduce the code-search quality, speed, and token-efficiency benchmark for Decode Semantic against MinishLab Semble, see the [semantic code-search benchmark](bench/semantic).
 
 ## Claude Code
 

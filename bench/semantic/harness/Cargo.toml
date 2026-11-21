@@ -1,0 +1,17 @@
+[package]
+name = "decode-semantic-bench"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+decode-semantic = { path = "../../../engine/decode-semantic" }
+decode-semantic-core = { path = "../../../engine/decode-semantic-core" }
+serde_json = "1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
