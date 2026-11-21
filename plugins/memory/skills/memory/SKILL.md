@@ -206,10 +206,14 @@ The plugin's `hooks/` (beside `skills/`) holds lifecycle hooks registered in
 its `hooks/hooks.json`; they run only in top-level sessions of workspaces
 with `memory/`.
 
-- `session-start-index.sh` (SessionStart): the flush rule plus up to 10 open
+- `session-start-index.sh` (SessionStart): the flush rule, up to 10 open
   (`active`/`paused`) features, most recently committed first, as directory slugs only
-  (no timestamp prefix or filenames). Set `active` when you resume a feature and `paused`/`done` when its
-  work stops, so this list stays accurate.
+  (no timestamp prefix or filenames), and up to 3 matching notes
+  (`- memory/<folder>/context.md (<title>)`) ranked by the plugin's memory MCP
+  server via `session-notes.py` (`startup` searches `.prompt` when present;
+  `compact` and `resume` search the latest user messages in the transcript;
+  failures stay silent). Set `active` when you resume a feature and `paused`/`done`
+  when its work stops, so the open list stays accurate.
 - `flush-hooks.sh` (Stop, PreCompact): work is a successful `git commit`, a
   saved edit outside `memory/` and `docs/`, or a completed subagent result in
   the transcript. It counts as flushed when git shows a commit touching a

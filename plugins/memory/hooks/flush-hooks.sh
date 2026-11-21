@@ -26,11 +26,12 @@ IFS=$'\t' read -r session root cwd transcript stop_active event parent < <(jq -r
 git -C "$cwd/memory" rev-parse --git-dir >/dev/null 2>&1 || exit 0
 
 # Prints "<kind>:<id>" for unflushed work, nothing when flushed or idle.
-fp=$(python3 - "$transcript" "$cwd" <<'PYTHON'
-import datetime, json, os, re, shlex, subprocess, sys
-from urllib.parse import unquote, urlparse
+fp=$(python3 - "$transcript" "$cwd" "$(dirname "$0")" <<'PYTHON'
+import json, os, re, subprocess, sys
 
-transcript, workspace = sys.argv[1:]
+transcript, workspace, hooks_dir = sys.argv[1:]
+sys.path.insert(0, hooks_dir)
+from transcript import messages as transcript_messages, result_text
 memory = os.path.normpath(os.path.join(workspace, "memory"))
 EDIT_TOOLS = {"apply_diff", "apply_patch", "write_to_file", "edit", "search_replace", "search_and_replace", "edit_file", "Edit", "Write", "MultiEdit"}
 COMMAND_TOOLS = {"execute_command", "Bash"}
@@ -41,84 +42,7 @@ FOLDER = re.compile(r"/?(?:[A-Za-z0-9_.-]+/)*memory/\d{14}-[A-Za-z0-9-]+")
 # A bare folder name, from a command run inside memory/.
 MEMORY_RELATIVE_FOLDER = re.compile(r"(?<![\w./-])\d{14}-[A-Za-z0-9-]+")
 
-def timestamp(value):
-    if isinstance(value, str):
-        return int(datetime.datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp() * 1000)
-    return value
-
-def result_text(item):
-    text = item.get("content", "")
-    if isinstance(text, list):
-        text = "\n".join(part.get("text", "") for part in text if part.get("type") in ("text", "input_text"))
-    return text if isinstance(text, str) else ""
-
-def native_item(record):
-    # Codex rollout records use response_item payloads, not Claude messages.
-    item = record["payload"]
-    kind = item.get("type")
-    if kind in ("function_call", "custom_tool_call"):
-        name = item["name"]
-        raw = item.get("arguments", item.get("input", ""))
-        params = {"command": raw} if kind == "custom_tool_call" else json.loads(raw)
-        if name in ("exec_command", "shell_command"):
-            name = "execute_command"
-            params["command"] = params.pop("cmd", params.get("command", ""))
-        return {"type": "tool_use", "id": item["call_id"], "name": name, "input": params}
-    if kind in ("function_call_output", "custom_tool_call_output"):
-        output = result_text({"content": item.get("output", "")})
-        return {"type": "tool_result", "tool_use_id": item["call_id"], "content": output,
-                "is_error": bool(re.search(r"Process exited with code [1-9]|Failed to apply patch", output))}
-    return None
-
-def native_event(record):
-    # Code-mode wrappers need not print their nested tool results (apply_patch
-    # returns {}). Codex records the actual completed mutation separately.
-    event = record["payload"]
-    if event.get("type") != "item_completed":
-        return []
-    item = event["item"]
-    kind = item.get("type")
-    if kind not in ("CommandExecution", "FileChange") or item["status"] != "completed":
-        return []
-    call = item["id"]
-    if kind == "CommandExecution":
-        name = "execute_command"
-        params = {"command": shlex.join(item["command"]), "cwd": unquote(urlparse(item["cwd"]).path)}
-        result = {"type": "tool_result", "tool_use_id": call,
-                  "content": f"Process exited with code {item['exit_code']}\nFinal output:\n{item['aggregated_output']}",
-                  "is_error": item["exit_code"] != 0}
-    else:
-        name = "apply_patch"
-        params = {"paths": list(item["changes"])}
-        result = {"type": "tool_result", "tool_use_id": call, "content": item["stdout"],
-                  "confirmed_paths": list(item["changes"])}
-    return [{"ts": event["started_at_ms"], "native": "codex", "content": [
-                {"type": "tool_use", "id": call, "name": name, "input": params}]},
-            {"ts": event["completed_at_ms"], "native": "codex", "content": [result]}]
-
-messages = []
-with open(transcript) as stream:
-    for line in stream:
-        record = json.loads(line)
-        ts = timestamp(record.get("timestamp", record.get("ts", 0)))
-        if record.get("type") == "event_msg":
-            messages.extend(native_event(record))
-            continue
-        if record.get("type") == "response_item":
-            item = native_item(record)
-            if item:
-                messages.append({"ts": ts, "content": [item], "native": "codex"})
-            continue
-        batch = record.get("apiMessages", [])
-        if record.get("representation") != "ui":
-            batch += record.get("messages", [])
-        batch += [record[key] for key in ("message", "apiMessage") if key in record]
-        for message in batch:
-            message.setdefault("ts", ts)
-            if "timestamp" in record and "message" in record:
-                message["native"] = "claude"
-        messages.extend(batch)
-messages.sort(key=lambda message: message.get("ts", 0))
+messages = transcript_messages(transcript)
 
 # Feature memory, other docs and agent working files (.agent-runs/, tmp/) are not work.
 NOT_WORK = [os.path.join(workspace, folder) for folder in ("memory", "docs", ".agent-runs", "tmp")]
