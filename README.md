@@ -68,6 +68,7 @@ Invoke `/memory:memory` to create, recall, or update feature notes. The workflow
 Hooks activate only for root sessions in projects that already contain `memory/`:
 
 - SessionStart injects a discovery rule and up to ten active/paused feature slugs. The rule and the skill tell agents to search the notes first and, when the notes do not fully answer, to search past chats with the harness's own search (or `search_chats` when the option above is on) before answering.
+- UserPromptSubmit, on the first message of a session only, searches the notes for it and names the three best-matching note folders (about 0.2 s once the index is warm; nothing is added when the search fails).
 - Stop reminds once after confirmed work without a corresponding committed feature-note update.
 - PreCompact blocks until the note is committed. Claude's recovery compaction can still expose the underlying context-limit error; the hook is not a way around an API limit.
 

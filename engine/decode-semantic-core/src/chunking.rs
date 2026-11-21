@@ -16,7 +16,7 @@ const RECURSION_DEPTH: usize = 500;
 const MIN_CHUNK_SIZE: usize = 50;
 
 /// One chunk of a file: its text and 1-based inclusive line range.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ChunkText {
     /// The chunk's source text.
     pub content: String,

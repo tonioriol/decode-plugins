@@ -191,6 +191,32 @@ check "index: slug-only rows" "$(printf '%s' "$index" | python3 -c 'import sys; 
 check "index: title and cursor omitted" "$(printf '%s' "$index" | grep -c -E 'deliberately|SECRET|20261010080000' || true)" "0"
 check "index: subagents skipped" "$(jq -cn --arg c "$ws" '{session_id:"child",parent_session_id:"parent",cwd:$c}' | "$index_hook")" ""
 
+# First-message notes: the hook runs from a copy beside a stub engine that returns canned hits.
+check "config: UserPromptSubmit registered" "$(jq -r 'any(.hooks.UserPromptSubmit[].hooks[]; .command|rtrimstr("\"")|endswith("prompt-notes.sh"))' "$config")" "true"
+plug="$tmp/plugin"; mkdir -p "$plug/hooks" "$plug/scripts"
+cp "$(dirname "$hook")/prompt-notes.sh" "$plug/hooks/"
+cat >"$plug/scripts/decode-semantic.sh" <<EOF
+#!/usr/bin/env bash
+[[ -f "$tmp/engine-fails" ]] && exit 1
+echo "\$*" >>"$tmp/engine-args"
+jq -n --arg w "$ws" '[\$w+"/memory/$F/plan.md", \$w+"/memory/$F/context.md", \$w+"/memory/$G/context.md", \$w+"/docs/x.md", \$w+"/memory/gone/context.md"] | map({file: ., score: 0.02})'
+EOF
+chmod +x "$plug/scripts/decode-semantic.sh"
+printf -- '---\ntitle: "Feature title"\nstatus: active\n---\n' >"$ws/memory/$F/context.md"
+notes() { jq -cn --arg c "$ws" --arg s "${1:-s1}" --arg p "${2:-why is it slow}" '{session_id:$s,cwd:$c,prompt:$p,hook_event_name:"UserPromptSubmit"}' | "$plug/hooks/prompt-notes.sh"; }
+out=$(notes s1 | jq -r .hookSpecificOutput.additionalContext)
+check "notes: one line per folder, best first, with title" "$(grep '^- ' <<<"$out")" "- memory/$F/context.md (Feature title)
+- memory/$G/context.md"
+check "notes: only existing note folders, no docs or plans" "$(grep -c -E 'gone|docs/|plan.md' <<<"$out" || true)" "0"
+check "notes: one line per folder" "$(grep -c '^- ' <<<"$out")" "2"
+check "notes: prompt passed to the search" "$(cat "$tmp/engine-args")" "search why is it slow"
+check "notes: second message is silent" "$(notes s1)" ""
+check "notes: a new session gets them" "$(notes s2 | grep -c "$F" || true)" "1"
+check "notes: subagents skipped" "$(jq -cn --arg c "$ws" '{session_id:"c",parent_session_id:"p",cwd:$c,prompt:"x"}' | "$plug/hooks/prompt-notes.sh")" ""
+check "notes: empty prompt is silent" "$(notes s3 '   ')" ""
+touch "$tmp/engine-fails"
+check "notes: engine failure is silent" "$(notes s4; echo "rc=$?")" "rc=0"
+
 rm -rf "$tmp"
 echo "$pass passed, $fail failed"
 [[ $fail -eq 0 ]]

@@ -9,6 +9,34 @@ pub mod files;
 pub mod mcp;
 pub mod model;
 pub mod serve;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+mod watch;
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+mod watch {
+    use std::{collections::BTreeMap, fs::Metadata, io, path::Path};
+
+    use decode_semantic_core::{Exclusions, FileStamp};
+
+    use crate::files::{self, Ignores};
+
+    #[derive(Debug)]
+    pub(crate) enum Watch {}
+
+    impl Watch {
+        pub(crate) fn unchanged(&mut self, _: &Metadata) -> bool {
+            false
+        }
+
+        pub(crate) fn list(
+            root: &Path,
+            exclusions: &Exclusions,
+            docs_only: bool,
+            ignores: Ignores,
+        ) -> io::Result<(BTreeMap<String, FileStamp>, Option<Self>)> {
+            files::list(root, exclusions, docs_only, ignores).map(|listing| (listing, None))
+        }
+    }
+}
 
 use std::path::PathBuf;
 

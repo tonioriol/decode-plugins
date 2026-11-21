@@ -4,6 +4,9 @@ members = ["decode-semantic-core", "decode-semantic"]
 resolver = "3"
 
 [workspace.dependencies]
+ignore = "0.4.34"
+inotify = { version = "0.11", default-features = false }
+kqueue = "1.2"
 memmap2 = "0.9"
 
 [profile.release]

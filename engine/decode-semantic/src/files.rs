@@ -1,9 +1,9 @@
 //! Which files of a folder the index holds.
 
 use std::collections::BTreeMap;
-use std::io;
 use std::path::Path;
 use std::time::UNIX_EPOCH;
+use std::{fs, io};
 
 use decode_semantic_core::{Exclusions, FileStamp, detect_language, is_doc_language};
 use ignore::WalkBuilder;
@@ -30,6 +30,7 @@ const SKIPPED_DIRS: &[&str] = &[
     "pkg",
     "Pods",
 ];
+pub(crate) const CUSTOM_IGNORES: [&str; 3] = [".rgignore", ".rooignore", ".decodeignore"];
 
 /// Whether `relative` (root-relative, `/`-separated) lies in one of [`SKIPPED_DIRS`] or a hidden folder.
 fn in_skipped_dir(relative: &str) -> bool {
@@ -61,16 +62,30 @@ pub fn list(
     docs_only: bool,
     ignores: Ignores,
 ) -> io::Result<BTreeMap<String, FileStamp>> {
+    list_observing(root, exclusions, docs_only, ignores, |_, _| {})
+}
+
+/// Reports directories visited and potential source files, including files large enough to be omitted now.
+pub(crate) fn list_observing(
+    root: &Path,
+    exclusions: &Exclusions,
+    docs_only: bool,
+    ignores: Ignores,
+    mut observe: impl FnMut(&Path, Option<&fs::Metadata>),
+) -> io::Result<BTreeMap<String, FileStamp>> {
     let mut builder = WalkBuilder::new(root);
     // The walker's default Git-aware mode stops .gitignore lookup at a nested repository or worktree.
     builder.parents(ignores == Ignores::WithParents);
-    for name in [".rgignore", ".rooignore", ".decodeignore"] {
+    for name in CUSTOM_IGNORES {
         builder.add_custom_ignore_filename(name);
     }
     let walker = builder.build();
     let mut files = BTreeMap::new();
     for entry in walker {
         let entry = entry.map_err(io::Error::other)?;
+        if entry.depth() == 0 || entry.file_type().is_some_and(|kind| kind.is_dir()) {
+            observe(entry.path(), None);
+        }
         if !entry.file_type().is_some_and(|kind| kind.is_file()) {
             continue;
         }
@@ -87,7 +102,9 @@ pub fn list(
         if (docs_only && !is_doc_language(language)) || exclusions.excludes(&relative) {
             continue;
         }
-        let Ok(meta) = entry.metadata() else { continue };
+        let meta = entry.metadata();
+        observe(entry.path(), meta.as_ref().ok());
+        let Ok(meta) = meta else { continue };
         if meta.len() > MAX_FILE_BYTES {
             continue;
         }

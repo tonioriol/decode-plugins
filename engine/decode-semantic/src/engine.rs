@@ -14,8 +14,9 @@ use decode_semantic_core::{
 };
 use sha2::{Digest, Sha256};
 
-use crate::files::{self, Ignores};
+use crate::files::Ignores;
 use crate::model::MODEL_REVISION;
+use crate::watch::Watch;
 
 /// One search result, with an absolute path.
 #[derive(Debug, Clone, PartialEq)]
@@ -78,7 +79,14 @@ pub fn cache_file(cache_dir: &Path, root: &Path) -> PathBuf {
 pub struct Engine {
     cache_dir: PathBuf,
     embedder: Embedder,
-    indexes: Mutex<BTreeMap<PathBuf, SourceIndex>>,
+    indexes: Mutex<BTreeMap<PathBuf, RootIndex>>,
+}
+
+#[derive(Debug)]
+struct RootIndex {
+    index: SourceIndex,
+    /// Only valid for the listing that produced this index, not another ignore or language scope.
+    watch: Option<(Ignores, bool, Watch)>,
 }
 
 impl Engine {
@@ -135,33 +143,67 @@ impl Engine {
         progress: Progress<'_>,
         scope: Option<&Path>,
     ) -> io::Result<Vec<Found>> {
-        let exclusions = Exclusions::new(&[]).map_err(io::Error::other)?;
+        let mut indexes = self.indexes.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut exclusions = None;
         let mut listed = Vec::with_capacity(sources.len());
         for (done, source) in sources.iter().enumerate() {
-            progress("listing folders", done, sources.len());
             let root = normalize(&source.root)?;
-            fs::metadata(&root)
+            let meta = fs::metadata(&root)
                 .map_err(|error| io::Error::new(error.kind(), format!("{}: {error}", root.display())))?;
-            let files = files::list(&root, &exclusions, docs_only, source.ignores)?;
-            listed.push((root, files));
+            let cached = indexes.get_mut(&root);
+            let current = cached.is_some_and(|cached| {
+                if cached.watch.as_mut().is_some_and(|(ignores, docs, watch)| {
+                    *ignores == source.ignores && *docs == docs_only && watch.unchanged(&meta)
+                }) {
+                    true
+                } else {
+                    cached.watch = None;
+                    false
+                }
+            });
+            let refresh = if current {
+                None
+            } else {
+                progress("listing folders", done, sources.len());
+                let exclusions = match &mut exclusions {
+                    Some(exclusions) => exclusions,
+                    None => exclusions.insert(Exclusions::new(&[]).map_err(io::Error::other)?),
+                };
+                Some(Watch::list(&root, exclusions, docs_only, source.ignores)?)
+            };
+            listed.push((root, refresh));
         }
-        progress("listing folders", sources.len(), sources.len());
-        let mut indexes = self.indexes.lock().unwrap_or_else(PoisonError::into_inner);
-        let total: usize = listed.iter().map(|(_, files)| files.len()).sum();
+        if exclusions.is_some() {
+            progress("listing folders", sources.len(), sources.len());
+        }
+        let total: usize = listed
+            .iter()
+            .filter_map(|(_, refresh)| refresh.as_ref().map(|(files, _)| files.len()))
+            .sum();
         let mut done = 0;
         let mut changed = Vec::new();
-        for (root, files) in &listed {
-            let index = indexes.entry(root.clone()).or_insert_with(|| self.restore(root));
+        for ((root, refresh), source) in listed.iter_mut().zip(sources) {
+            let Some((files, watch)) = refresh.take() else {
+                continue;
+            };
+            let cached = indexes.entry(root.clone()).or_insert_with(|| RootIndex {
+                index: self.restore(root),
+                watch: None,
+            });
             let report = |files_done: usize| progress("indexing files", done + files_done, total);
-            if update(&self.embedder, root, index, files, &report) && !changed.contains(root) {
+            let (updated, complete) = update(&self.embedder, root, &mut cached.index, &files, &report);
+            cached.watch = watch
+                .filter(|_| complete)
+                .map(|watch| (source.ignores, docs_only, watch));
+            if updated && !changed.contains(root) {
                 changed.push(root.clone());
             }
             done += files.len();
         }
         for (saved, root) in changed.iter().enumerate() {
             progress("saving indexes", saved, changed.len());
-            if let Some(index) = indexes.get_mut(root) {
-                self.persist(root, index);
+            if let Some(cached) = indexes.get_mut(root) {
+                self.persist(root, &mut cached.index);
             }
         }
         if !changed.is_empty() {
@@ -187,7 +229,7 @@ impl Engine {
                 }
                 Some(SearchSource {
                     name,
-                    index: indexes.get(root)?,
+                    index: &indexes.get(root)?.index,
                     boost: source.boost,
                     path_prefix: prefix.as_deref(),
                 })
@@ -224,15 +266,27 @@ impl Engine {
     /// from its folder when the copy is missing, so a failed write only costs time.
     fn persist(&self, root: &Path, index: &mut SourceIndex) {
         let file = cache_file(&self.cache_dir, root);
-        let tmp = file.with_extension(format!("{}.tmp", std::process::id()));
-        let written = fs::create_dir_all(&self.cache_dir)
-            .and_then(|()| index.write_to(&mut fs::File::create(&tmp)?))
-            .and_then(|()| fs::rename(&tmp, &file))
-            .and_then(|()| self.open(&file));
+        let written = fs::create_dir_all(&self.cache_dir).and_then(|()| {
+            // A private temporary keeps concurrent writers from sharing the inode even before locking.
+            let mut tmp = tempfile::NamedTempFile::new_in(&self.cache_dir)?;
+            #[cfg(test)]
+            tests::pause_after_temp_open();
+            index.write_to(tmp.as_file_mut())?;
+
+            // Match the Decode index's stable lock sibling; never remove it while another writer may use it.
+            let lock = fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .open(file.with_extension("lock"))?;
+            lock.lock()?;
+            let published = tmp.persist(&file)?;
+            SourceIndex::open(Arc::new(published), self.embedder.dim())
+        });
         match written {
             Ok(reopened) => *index = reopened,
             Err(error) => {
-                drop(fs::remove_file(&tmp));
                 eprintln!(
                     "decode-semantic: could not persist the index of {}: {error}",
                     root.display()
@@ -244,19 +298,19 @@ impl Engine {
 
 /// Re-indexes the files of `listing` that changed since `index` saw them and drops the ones gone. Files are read
 /// and embedded in parallel on half the cores; `report` is called on this thread with the files done. Returns
-/// whether anything changed.
+/// whether anything changed and whether every intended file was read.
 fn update(
     embedder: &Embedder,
     root: &Path,
     index: &mut SourceIndex,
     listing: &BTreeMap<String, FileStamp>,
     report: &dyn Fn(usize),
-) -> bool {
+) -> (bool, bool) {
     let changed = changes(index, listing);
     let unchanged = listing.len() - changed.upsert.len();
     report(unchanged);
     if changed.upsert.is_empty() && changed.remove.is_empty() {
-        return false;
+        return (false, true);
     }
     for path in &changed.remove {
         index.remove(path);
@@ -300,6 +354,7 @@ fn update(
             .collect()
     });
     let read: BTreeSet<&str> = prepared.iter().map(|(path, _, _)| path.as_str()).collect();
+    let complete = read.len() == changed.upsert.len();
     for (path, _) in &changed.upsert {
         if !read.contains(path.as_str()) {
             index.remove(path);
@@ -308,11 +363,16 @@ fn update(
     for (path, stamp, file) in prepared {
         index.upsert(&path, stamp, file);
     }
-    true
+    (true, complete)
 }
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
+    use std::io::Read;
+    use std::sync::mpsc::{self, Receiver, Sender};
+    use std::time::Duration;
+
     use decode_semantic_core::test_embedder;
 
     use super::*;
@@ -335,6 +395,167 @@ mod tests {
     }
 
     fn quiet(_: &str, _: usize, _: usize) {}
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[test]
+    fn warm_search_skips_listing_until_the_files_change() {
+        let storage = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let root = project.path().to_path_buf();
+        let engine = Engine::new(storage.path(), embedder());
+        let progress = std::cell::RefCell::new(Vec::new());
+        let search = || {
+            progress.borrow_mut().clear();
+            engine
+                .search(
+                    std::slice::from_ref(&root),
+                    "deploy bundle",
+                    10,
+                    false,
+                    &|stage, _, _| {
+                        progress.borrow_mut().push(stage.to_owned());
+                    },
+                )
+                .unwrap()
+        };
+        write(
+            &root,
+            "src/deploy.md",
+            "# Deploy\n\nDeploy the original bundle.\n",
+        );
+        let original = search();
+        assert_eq!(files_of(&original), ["deploy.md"]);
+        assert!(progress.borrow().iter().any(|stage| stage == "listing folders"));
+        assert_eq!(search(), original);
+        assert!(progress.borrow().is_empty(), "warm search did work: {progress:?}");
+
+        write(
+            &root,
+            "src/deploy.md",
+            "# Deploy\n\nDeploy the replacement bundle to the bucket.\n",
+        );
+        let edited = search();
+        assert!(
+            edited
+                .iter()
+                .any(|hit| hit.content.contains("replacement bundle")),
+            "{edited:?}"
+        );
+        assert!(
+            !edited.iter().any(|hit| hit.content.contains("original bundle")),
+            "{edited:?}"
+        );
+
+        write(
+            &root,
+            "new/bucket.md",
+            "# Bucket\n\nDeploy the bundle to this bucket.\n",
+        );
+        assert!(files_of(&search()).contains(&"bucket.md".to_owned()));
+        fs::remove_file(root.join("src/deploy.md")).unwrap();
+        assert_eq!(files_of(&search()), ["bucket.md"]);
+        search();
+        assert!(progress.borrow().is_empty(), "warm search did work: {progress:?}");
+
+        // Replacing an inode must also replace its watch, so the next in-place edit is seen.
+        write(
+            &root,
+            "replacement",
+            "# Bucket\n\nDeploy another bundle instead.\n",
+        );
+        fs::rename(root.join("replacement"), root.join("new/bucket.md")).unwrap();
+        assert!(search().iter().any(|hit| hit.content.contains("another bundle")));
+        write(
+            &root,
+            "new/bucket.md",
+            "# Bucket\n\nDeploy the final bundle into the bucket.\n",
+        );
+        assert!(search().iter().any(|hit| hit.content.contains("final bundle")));
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[test]
+    fn warm_search_observes_ignore_rules_outside_the_source() {
+        let storage = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let root = project.path().join("source");
+        let external = project.path().join("rules");
+        write(
+            &root,
+            "deploy.md",
+            "# Deploy\n\nDeploy the bundle to the bucket.\n",
+        );
+        std::os::unix::fs::symlink(&external, root.join(".decodeignore")).unwrap();
+        let engine = Engine::new(storage.path(), embedder());
+        let search = || {
+            engine
+                .search(std::slice::from_ref(&root), "deploy", 10, false, &quiet)
+                .unwrap()
+        };
+        assert_eq!(files_of(&search()), ["deploy.md"]);
+        fs::write(&external, "deploy.md\n").unwrap();
+        assert!(search().is_empty());
+        fs::remove_file(&external).unwrap();
+        assert_eq!(files_of(&search()), ["deploy.md"]);
+
+        fs::write(project.path().join(".ignore"), "deploy.md\n").unwrap();
+        assert!(search().is_empty());
+        fs::write(project.path().join(".ignore"), "retain.md\n").unwrap();
+        assert_eq!(files_of(&search()), ["deploy.md"]);
+    }
+
+    type TempOpenHook = (Sender<()>, Receiver<()>);
+    thread_local! {
+        static TEMP_OPEN: Cell<Option<TempOpenHook>> = const { Cell::new(None) };
+    }
+
+    pub(super) fn pause_after_temp_open() {
+        if let Some((opened, resume)) = TEMP_OPEN.take() {
+            opened.send(()).unwrap();
+            resume.recv_timeout(Duration::from_secs(5)).unwrap();
+        }
+    }
+
+    #[test]
+    fn concurrent_writers_never_modify_a_published_index_in_place() {
+        let storage = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let root = project.path().to_path_buf();
+        let a = Engine::new(storage.path(), embedder());
+        let b = Engine::new(storage.path(), embedder());
+        write(&root, "a.md", "# Alpha\n\ndeploy bundle alpha\n");
+        let (opened_tx, opened_rx) = mpsc::channel();
+        let (resume_tx, resume_rx) = mpsc::channel();
+        std::thread::scope(|scope| {
+            let root = &root;
+            let first = scope.spawn(move || {
+                TEMP_OPEN.set(Some((opened_tx, resume_rx)));
+                a.search(std::slice::from_ref(root), "deploy", 3, false, &quiet)
+                    .unwrap();
+            });
+            opened_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+            write(root, "a.md", "# Bravo\n\ndeploy bundle bravo\n");
+            b.search(std::slice::from_ref(root), "deploy", 3, false, &quiet)
+                .unwrap();
+            let file = cache_file(&b.cache_dir, root);
+            let bytes = fs::read(&file).unwrap();
+            // Keep B's exact publication open across A's write and possible replacement.
+            let mut published = fs::File::open(&file).unwrap();
+            resume_tx.send(()).unwrap();
+            first.join().unwrap();
+            let mut after = Vec::new();
+            published.read_to_end(&mut after).unwrap();
+            assert!(
+                bytes == after,
+                "the other writer modified the published index in place"
+            );
+            assert!(
+                bytes != fs::read(&file).unwrap(),
+                "the first writer must publish a replacement"
+            );
+            b.open(&file).unwrap();
+        });
+    }
 
     #[test]
     fn finds_files_by_meaning_and_follows_edits_and_deletions() {

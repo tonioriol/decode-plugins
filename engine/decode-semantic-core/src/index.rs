@@ -105,7 +105,7 @@ pub struct FileStamp {
 
 /// A file chunked, tokenized and embedded, ready to be put into an index. Built without touching any index, so it
 /// can run in parallel and outside any lock.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PreparedFile {
     chunks: Vec<ChunkText>,
     terms: Vec<BTreeMap<String, u32>>,
@@ -143,6 +143,19 @@ impl PreparedFile {
     /// How many chunks the file has.
     pub fn chunk_count(&self) -> usize {
         self.chunks.len()
+    }
+
+    /// Whether a deserialized entry has one embedding and a valid term map per chunk.
+    pub fn fits(&self, dim: usize) -> bool {
+        self.chunks.len().checked_mul(dim) == Some(self.vectors.len())
+            && self.terms.len() == self.chunks.len()
+            && self.terms.iter().all(|terms| {
+                terms
+                    .values()
+                    .copied()
+                    .try_fold(0_u32, u32::checked_add)
+                    .is_some()
+            })
     }
 }
 
