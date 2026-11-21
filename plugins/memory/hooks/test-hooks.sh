@@ -204,6 +204,13 @@ EOF
 chmod +x "$plug/scripts/decode-semantic.sh"
 printf -- '---\ntitle: "Feature title"\nstatus: active\n---\n' >"$ws/memory/$F/context.md"
 notes() { jq -cn --arg c "$ws" --arg s "${1:-s1}" --arg p "${2:-why is it slow}" '{session_id:$s,cwd:$c,prompt:$p,hook_event_name:"UserPromptSubmit"}' | "$plug/hooks/prompt-notes.sh"; }
+start() { jq -cn --arg c "$ws" --arg s "$1" --arg src "${2:-startup}" '{session_id:$s,cwd:$c,source:$src,hook_event_name:"SessionStart"}' | "$plug/hooks/prompt-notes.sh"; }
+check "notes: SessionStart registered for startup" "$(jq -r 'any(.hooks.SessionStart[]; .matcher == "startup" and any(.hooks[]; .command|rtrimstr("\"")|endswith("prompt-notes.sh")))' "$config")" "true"
+check "notes: a chat that did not just start is silent" "$(notes old)" ""
+start r1 resume; start c1 compact
+check "notes: resumed or condensed chat is silent" "$(notes r1)$(notes c1)" ""
+check "notes: SessionStart itself prints nothing" "$(start s1)" ""
+for s in s2 s3 s4; do start $s; done
 out=$(notes s1 | jq -r .hookSpecificOutput.additionalContext)
 check "notes: one line per folder, best first, with title" "$(grep '^- ' <<<"$out")" "- memory/$F/context.md (Feature title)
 - memory/$G/context.md"

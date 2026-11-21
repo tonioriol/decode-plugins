@@ -12,10 +12,14 @@ session=$(jq -r '.session_id // empty' <<<"$input")
 cwd=$(jq -r '.cwd // empty' <<<"$input")
 [[ -d $cwd/memory ]] || exit 0
 
-# Once per session: the first message claims the marker; later ones find it taken.
+# Only a new session's first message: SessionStart (startup) leaves a marker, the next prompt takes it. A resumed,
+# condensed or older chat never got one, so its messages stay silent.
 marks="${XDG_STATE_HOME:-$HOME/.local/state}/memory-hooks/first-prompt"
-mkdir -p "$marks"
-mkdir "$marks/$session" 2>/dev/null || exit 0
+if [[ $(jq -r '.hook_event_name // empty' <<<"$input") == SessionStart ]]; then
+  [[ $(jq -r '.source // "startup"' <<<"$input") == startup ]] && mkdir -p "$marks/$session"
+  exit 0
+fi
+rmdir "$marks/$session" 2>/dev/null || exit 0
 
 prompt=$(jq -r '.prompt // empty' <<<"$input" | head -c 2000)
 [[ -n ${prompt//[[:space:]]/} ]] || exit 0
