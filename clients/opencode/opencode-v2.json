@@ -1,0 +1,19 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "servers": {
+      "semantic-search": {
+        "type": "local",
+        "command": ["/absolute/path/to/decode-plugins/plugins/semantic-search/scripts/server.sh"],
+        "environment": { "CLAUDE_PROJECT_DIR": "" },
+        "timeout": { "startup": 120000 }
+      },
+      "memory": {
+        "type": "local",
+        "command": ["/absolute/path/to/decode-plugins/plugins/memory/scripts/server.sh"],
+        "environment": { "CLAUDE_PROJECT_DIR": "" },
+        "timeout": { "startup": 120000 }
+      }
+    }
+  }
+}

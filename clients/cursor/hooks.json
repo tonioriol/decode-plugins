@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      { "command": "bash '/absolute/path/to/decode-plugins/clients/cursor/session-start.sh'" }
+    ]
+  }
+}

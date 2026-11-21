@@ -1,7 +1,7 @@
 # Decode plugins
 
-Marketplace of Decode companion plugins, with Claude Code plugins and
-thin Codex adapters. It currently contains two plugins:
+Marketplace of Decode companion plugins, with install instructions for Claude
+Code, Codex, OpenCode, and Cursor. It currently contains two plugins:
 
 - **semantic-search** exposes `project_search` for source code.
 - **memory** adds a durable feature-note workflow, the `search` MCP tool over `memory/` and `docs/`, and SessionStart, Stop, and PreCompact hooks. It declares `dependencies: ["semantic-search"]`, so Claude installs both.
@@ -40,7 +40,7 @@ From a shell, the equivalent configuration interface is:
 printf '%s\n' '{"scan_root":"/path/to/projects"}' | claude plugin configure memory@decode-plugins --values-stdin
 ```
 
-Data is shared between Claude Code, Codex and Decode, so nothing is downloaded or indexed twice. It lives under `DECODE_PLUGINS_DATA` (default `~/.decode/plugin-data`):
+Data is shared across these harnesses and Decode, so the engine and indexes can be reused. It lives under `DECODE_PLUGINS_DATA` (default `~/.decode/plugin-data`):
 
 - `bin/<release>/decode-semantic-<platform>`: the engine binary.
 - `memory/`: the notes index and embedding model, the same folder Decode's own notes search uses.
@@ -140,6 +140,72 @@ the reminder.
 Pinned implementation references: [native MCP fields](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/codex-mcp/src/plugin_config.rs#L155-L197),
 [approval meaning](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/core/src/mcp_tool_call.rs#L2772-L2784),
 and [`/hooks` dispatch](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/tui/src/chatwidget/slash_dispatch.rs#L537-L539).
+
+## OpenCode
+
+These steps connect both local MCP servers and install the existing `memory` skill. They configure OpenCode itself, so a frontend that runs OpenCode uses the same setup. Install the [dependencies listed above](#claude-code) and keep a checkout at a stable location:
+
+```sh
+git clone --branch v0.3.0 https://github.com/tonioriol/decode-plugins.git "$HOME/decode-plugins"
+```
+
+1. Check `opencode --version`. Use [the V1 snippet](clients/opencode/opencode-v1.json) for 1.x, or [the V2 snippet](clients/opencode/opencode-v2.json) for 2.x. Replace `/absolute/path/to/decode-plugins` with the checkout's full path; in the V1 `file://` URL, percent-encode spaces and other URI delimiters. Merge the snippet into the existing file instead of replacing unrelated settings. Pick one scope:
+
+   | Scope | Merge into | Copy the skill to |
+   | --- | --- | --- |
+   | Global | `~/.config/opencode/opencode.json` (or `.jsonc`, under `$XDG_CONFIG_HOME/opencode` if set) | `~/.config/opencode/skills/memory/SKILL.md` (same XDG rule) |
+   | One project | `opencode.json` or `opencode.jsonc` at the project root | `.opencode/skills/memory/SKILL.md` at the project root |
+
+2. From the project root, set `dest` to the directory for your chosen scope and copy the skill. For a one-project install:
+
+   ```sh
+   dest=.opencode
+   mkdir -p "$dest/skills/memory"
+   cp "$HOME/decode-plugins/plugins/memory/skills/memory/SKILL.md" "$dest/skills/memory/SKILL.md"
+   ```
+
+   For a global install, use `dest="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"` instead. No additional rule is required. OpenCode also supports global `AGENTS.md` in its config directory and project `AGENTS.md`.
+
+3. Restart OpenCode in the project. `opencode mcp list` should show both servers connected. In 1.x, `opencode debug skill` lists `memory`. Ask OpenCode to load the `memory` skill and try `memory_search` or `semantic-search_project_search`.
+
+The V1 snippet registers a local JS plugin via `plugin`. On the first user message in an empty top-level session with `memory/`, it uses `chat.message` to add the existing SessionStart guidance and first-prompt note matches. An existing session, subagent, or project without `memory/` gets neither. V1 also exposes `session.created`, `session.idle`, and `experimental.session.compacting`; idle is a notification and compaction can augment the summary prompt, not defer compaction until a note is committed. The transcript-based Stop and PreCompact hooks are not installed. V2 has a different server plugin API (`session.hook("prompt" | "context" | "compaction", …)`); the V2 snippet installs the MCP servers only, with the skill available after the copy step above. No automatic session guidance, ranked prompt hints, Stop, or PreCompact hooks are installed on V2.
+
+OpenCode discovers local JS/TS plugins globally in `~/.config/opencode/plugins/` and per project in `.opencode/plugins/`. V2 also has `opencode plugin add` for npm and npm-compatible Git packages, including the V2 plugin format via `plugins` in config. These Decode adapters are installed from the checkout as shown above, not published as an OpenCode package.
+
+Official docs checked 2026-11-21: [config](https://opencode.ai/docs/config/), [V1 MCP](https://opencode.ai/v1/docs/mcp-servers/), [V2 MCP](https://opencode.ai/docs/mcp-servers/), [skills](https://opencode.ai/docs/skills/), [rules](https://opencode.ai/docs/rules/), [V1 plugins and events](https://opencode.ai/v1/docs/plugins/), [V2 plugin installation](https://opencode.ai/docs/plugins/), [V2 server hooks](https://opencode.ai/docs/build/plugins/server), and the [V1 `chat.message` API](https://github.com/anomalyco/opencode/blob/v1.18.34/packages/plugin/src/index.ts).
+
+## Cursor
+
+These steps configure both MCP servers, the `memory` skill, and session-start guidance for Cursor Agent. Keep the same stable checkout and prerequisites as in [OpenCode](#opencode). Pick one scope:
+
+| Scope | Directory for the MCP config, hooks config, and skill |
+| --- | --- |
+| Global | `~/.cursor/` |
+| One project | `.cursor/` at the project root |
+
+1. Merge [the MCP snippet](clients/cursor/mcp.json) into `mcp.json` in that directory; replace `/absolute/path/to/decode-plugins` with the checkout's full path. Keep `${workspaceFolder}` unchanged: Cursor expands it to the active project and the launchers use it to scope search. Use a single-folder workspace for this setup.
+2. Merge [the hooks snippet](clients/cursor/hooks.json) into `hooks.json` in the same directory, keeping `version: 1` and any existing hook entries. Replace the checkout path there too. The path is in a single-quoted shell argument; if your checkout has an apostrophe in its path, escape it for the shell or use a checkout path without one. Project hooks require a trusted workspace.
+3. From the project root, copy the skill for a one-project install:
+
+   ```sh
+   dest=.cursor
+   mkdir -p "$dest/skills/memory"
+   cp "$HOME/decode-plugins/plugins/memory/skills/memory/SKILL.md" "$dest/skills/memory/SKILL.md"
+   ```
+
+   For a global install, use `dest="$HOME/.cursor"` instead. No rule is required. Cursor's optional global User Rules live in Cursor Settings; project Rules are `.cursor/rules/*.mdc` (or use `AGENTS.md`).
+
+4. Restart Cursor Agent or reload the editor, open a new session in the project, and check that `memory` and `semantic-search` are enabled in **Customize → MCP** (or run `agent mcp list` in the CLI). Ask the agent to use the `memory` skill, or select it from the `/` menu.
+
+The Cursor `sessionStart` adapter maps `session_id` and the single reported `workspace_roots` entry to the existing discovery hook, then returns its text as `additional_context`. It does nothing if Cursor does not report exactly one workspace root. Cursor's `beforeSubmitPrompt` can allow/block a prompt but does not return agent context, so no first-prompt note hint is installed. `stop` supports an automatic follow-up, not the existing transcript-based reminder. `preCompact` is observational and cannot postpone compaction. Neither is installed.
+
+Cursor supports its own plugin format and the Agent Plugins standard; official and team marketplaces install compatible bundles via **Customize**, and Cursor can load local development bundles if local imports are allowed. This repository does not publish a Cursor marketplace bundle: use the native config files above.
+
+Official docs checked 2026-11-21: [MCP](https://cursor.com/docs/context/mcp), [CLI MCP](https://cursor.com/docs/cli/mcp), [skills](https://cursor.com/docs/context/skills), [rules](https://cursor.com/docs/context/rules), [hooks and event contracts](https://cursor.com/docs/agent/hooks), and [plugins and marketplace](https://cursor.com/docs/plugins).
+
+### Scope for OpenCode and Cursor
+
+Without additional configuration the servers search only the opened project; no past-chat index is wired up for these two harnesses. To add scan roots, set `DECODE_PLUGINS_SCAN_ROOT` and `DECODE_PLUGINS_SCAN_ROOT_2` in each server's `environment` (OpenCode) or `env` (Cursor) object. Only set them where intended: semantic-search indexes all eligible **source code** under those roots, while memory searches only `memory/` and `docs/`.
 
 ## Development and testing
 

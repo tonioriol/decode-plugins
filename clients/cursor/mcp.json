@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "semantic-search": {
+      "command": "/absolute/path/to/decode-plugins/plugins/semantic-search/scripts/server.sh",
+      "env": { "CLAUDE_PROJECT_DIR": "${workspaceFolder}" }
+    },
+    "memory": {
+      "command": "/absolute/path/to/decode-plugins/plugins/memory/scripts/server.sh",
+      "env": { "CLAUDE_PROJECT_DIR": "${workspaceFolder}" }
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "mcp": {
+    "semantic-search": {
+      "type": "local",
+      "command": ["/absolute/path/to/decode-plugins/plugins/semantic-search/scripts/server.sh"],
+      "environment": { "CLAUDE_PROJECT_DIR": "" },
+      "timeout": 120000
+    },
+    "memory": {
+      "type": "local",
+      "command": ["/absolute/path/to/decode-plugins/plugins/memory/scripts/server.sh"],
+      "environment": { "CLAUDE_PROJECT_DIR": "" },
+      "timeout": 120000
+    }
+  },
+  "plugin": ["file:///absolute/path/to/decode-plugins/clients/opencode/memory-v1.js"]
+}
