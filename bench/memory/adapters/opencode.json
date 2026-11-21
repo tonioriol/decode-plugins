@@ -1,0 +1,8 @@
+{
+  "parser": "opencode",
+  "prompt_via": "arg",
+  "timeout": 900,
+  "command": ["opencode", "run", "--format", "json", "--dir", "{workdir}"],
+  "model_args": ["-m", "{model}"],
+  "arm_args": {}
+}

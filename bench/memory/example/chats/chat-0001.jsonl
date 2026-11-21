@@ -1,0 +1,2 @@
+{"role":"user","text":"sync keeps failing around noon, quota exhausted again"}
+{"role":"assistant","text":"The 30 second polling burns the free-tier API quota. Switching to a websocket push channel so the server announces changes."}

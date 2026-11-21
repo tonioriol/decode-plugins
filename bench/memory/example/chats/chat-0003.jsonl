@@ -1,0 +1,2 @@
+{"role":"user","text":"what should happen to the old ini file after migrating?"}
+{"role":"assistant","text":"Convert marmot.ini to config.toml on first start, rename the old file to marmot.ini.bak, and skip everything if config.toml exists."}

@@ -1,0 +1,2 @@
+{"role":"user","text":"German users say the exported CSV columns are broken"}
+{"role":"assistant","text":"Comma-decimal locales split numbers at the decimal comma. Making the semicolon the default delimiter fixes spreadsheet imports."}

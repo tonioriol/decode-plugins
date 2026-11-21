@@ -1,0 +1,7 @@
+{
+  "parser": "generic",
+  "prompt_via": "stdin",
+  "timeout": 60,
+  "command": ["python3", "{adapter_dir}/../example/stub_agent.py"],
+  "arm_args": {}
+}

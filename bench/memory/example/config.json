@@ -1,0 +1,12 @@
+{
+  "cap": 25,
+  "cutoff": "2031-08-01",
+  "workdir": ".",
+  "notes_dir": "notes",
+  "transcripts_dir": "chats",
+  "code_dir": ".",
+  "notes_search_tool": "",
+  "chat_search_tool": "search_past_chats",
+  "extra_forbidden_tools": [],
+  "arms": ["notes", "transcripts", "past_chat", "code_git"]
+}

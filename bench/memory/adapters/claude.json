@@ -1,0 +1,14 @@
+{
+  "parser": "claude",
+  "prompt_via": "stdin",
+  "timeout": 900,
+  "command": ["claude", "-p", "--output-format", "stream-json", "--verbose", "--no-session-persistence", "--permission-mode", "dontAsk"],
+  "model_args": ["--model", "{model}"],
+  "arm_args": {
+    "notes": ["--allowed-tools", "Read,Grep,Glob,{notes_search_tool}"],
+    "transcripts": ["--allowed-tools", "Read,Grep,Glob,Bash(rg *),Bash(grep *)"],
+    "past_chat": ["--allowed-tools", "{chat_search_tool}"],
+    "code_git": ["--allowed-tools", "Read,Grep,Glob,Bash(git *),Bash(rg *)"],
+    "grader": ["--tools", ""]
+  }
+}

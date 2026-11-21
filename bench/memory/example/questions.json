@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "questions": [
+    {
+      "id": "Q01",
+      "question": "Why did the Marmot sync command stop polling the server, and what replaced the polling?",
+      "gold_facts": [
+        "Polling every 30 seconds used up the free-tier API quota",
+        "A websocket push channel replaced the polling"
+      ],
+      "sources": {
+        "notes": ["notes/2031-03-sync-push/context.md"],
+        "transcripts": ["chats/chat-0001.jsonl"],
+        "code": ["src/sync.py"]
+      }
+    },
+    {
+      "id": "Q02",
+      "question": "Which delimiter does the Marmot CSV export use by default, and what was the reason for choosing it?",
+      "gold_facts": [
+        "The default delimiter is a semicolon",
+        "Comma-decimal locales would otherwise break spreadsheet imports"
+      ],
+      "sources": {
+        "notes": ["notes/2031-05-export-csv/context.md"],
+        "transcripts": ["chats/chat-0002.jsonl"],
+        "code": ["src/export.py"]
+      }
+    },
+    {
+      "id": "Q03",
+      "question": "How does Marmot migrate an old config file, and what happens to the old file afterwards?",
+      "gold_facts": [
+        "On first start it converts the old INI file to config.toml",
+        "The old file is renamed with a .bak suffix, not deleted",
+        "The migration is skipped when config.toml already exists"
+      ],
+      "sources": {
+        "notes": ["notes/2031-07-config-migration/context.md"],
+        "transcripts": ["chats/chat-0003.jsonl"],
+        "code": ["src/config.py"]
+      }
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "parser": "codex",
+  "prompt_via": "stdin",
+  "timeout": 900,
+  "command": ["codex", "exec", "--json", "--ephemeral", "--skip-git-repo-check", "-s", "read-only", "-C", "{workdir}"],
+  "model_args": ["-m", "{model}"],
+  "arm_args": {}
+}

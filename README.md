@@ -6,6 +6,8 @@ thin Codex adapters. It currently contains two plugins:
 - **semantic-search** exposes `project_search` for source code.
 - **memory** adds a durable feature-note workflow, the `search` MCP tool over `memory/` and `docs/`, and SessionStart, Stop, and PreCompact hooks. It declares `dependencies: ["semantic-search"]`, so Claude installs both.
 
+To measure how well notes, transcripts, past-chat search and code search answer questions about earlier work, with any harness and your own corpus, see the [memory recall eval](bench/memory).
+
 ## Claude Code
 
 Run these two commands in Claude Code:
