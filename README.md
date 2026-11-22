@@ -5,7 +5,7 @@ Two plugins for Claude Code, Codex, OpenCode and Cursor:
 - **memory**: feature notes in `memory/`, a `search` tool over `memory/` and `docs/`, and hooks that show matching notes at session start and remind the agent to update them.
 - **semantic-search**: a `project_search` tool over source code.
 
-Both run [Decode Semantic](https://tonioriol.github.io/decode-semantic/#semantic), a Rust port of [MinishLab Semble](https://github.com/MinishLab/semble). Overview: [tonioriol.github.io/decode-semantic](https://tonioriol.github.io/decode-semantic/). Benchmarks: [memory recall](bench/memory), [code search](bench/semantic).
+Both run [Decode Semantic](https://tonioriol.github.io/decode-semantic/#search), a Rust port of [MinishLab Semble](https://github.com/MinishLab/semble). Overview: [tonioriol.github.io/decode-semantic](https://tonioriol.github.io/decode-semantic/). Benchmarks: [memory recall](bench/memory), [code search](bench/semantic).
 
 ## Requirements
 
