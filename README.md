@@ -1,89 +1,29 @@
 # Decode plugins
 
-Marketplace of Decode companion plugins, with install instructions for Claude
-Code, Codex, OpenCode, and Cursor. It currently contains two plugins:
+Two plugins for Claude Code, Codex, OpenCode and Cursor:
 
-- **semantic-search** exposes `project_search` for source code.
-- **memory** adds a durable feature-note workflow, the `search` MCP tool over `memory/` and `docs/`, and SessionStart, Stop, and PreCompact hooks. It declares `dependencies: ["semantic-search"]`, so Claude installs both.
+- **memory**: feature notes in `memory/`, a `search` tool over `memory/` and `docs/`, and hooks that show matching notes at session start and remind the agent to update them.
+- **semantic-search**: a `project_search` tool over source code.
 
-To measure how well notes, transcripts, past-chat search and code search answer questions about earlier work, with any harness and your own corpus, see the [memory recall eval](bench/memory). To reproduce the code-search quality, speed, and token-efficiency benchmark for Decode Semantic against MinishLab Semble, see the [semantic code-search benchmark](bench/semantic).
+Both run [Decode Semantic](https://tonioriol.github.io/rsemble/#semantic), a Rust port of [MinishLab Semble](https://github.com/MinishLab/semble). Overview: [tonioriol.github.io/rsemble](https://tonioriol.github.io/rsemble/). Benchmarks: [memory recall](bench/memory), [code search](bench/semantic).
+
+## Requirements
+
+- macOS (Apple Silicon, Intel) or Linux (x86_64, aarch64). Windows only through WSL.
+- Bash, curl and Python 3. The memory hooks also need Git, jq and ripgrep.
+
+The first search downloads the pinned engine release and checks its SHA-256, then downloads the `minishlab/potion-code-16M-v2` model from Hugging Face. Indexes stay on your machine.
 
 ## Claude Code
-
-Run these two commands in Claude Code:
 
 ```text
 /plugin marketplace add tonioriol/decode-plugins
 /plugin install memory@decode-plugins
 ```
 
-Use a recent Claude Code with plugin dependency and `userConfig` support. Development validation uses Claude Code 2.1.316. The first search downloads the pinned `decode-semantic` release binary with `curl` (or `gh` when it is signed in). Install Bash, curl and Python 3; the memory hooks also require Git, jq, and ripgrep.
+`memory` depends on `semantic-search`, so both get installed.
 
-Release binaries cover **macOS** (Apple Silicon and Intel) and **Linux** (x86_64 and aarch64). Windows is not supported (WSL works); see [building](docs/building.md). The engine's source is in [engine/](engine), so you can also build it yourself.
-
-### Scope and configuration
-
-Both MCP servers search **only the current project by default**. Memory searches its `memory/` and `docs/` folders; semantic-search indexes source code. The engine applies ignore rules, including `.rooignore`, rejects symlinks, and limits indexed file size.
-
-Each plugin exposes optional directory options `scan_root` and `scan_root_2` under `/config`. Leave them empty for project-only scope. Configure each plugin separately; configuring memory does not change semantic-search. These are local user settings, never repository defaults.
-
-- **semantic-search: broad scans index ALL SOURCE CODE** under the selected folder across its projects, subject to the engine's ignore and size rules. A cold search can take **minutes** while that code is embedded and indexed. Do not point it at a broad projects folder when you only want cross-project notes.
-- **memory: cheap cross-project NOTES scans** read only project `memory/` and `docs/` folders, not all source code. Parent directories containing many projects are suitable for this notes-only recall.
-
-The engine still warms its index eagerly. While a search waits, MCP clients that send a progress token receive project-folder and file indexing counts plus **Saving N/M project indexes** during persistence rather than a silent wait. Whether those messages are shown depends on the client; progress does not make a broad cold scan cheap.
-
-Broad scans over large code trees can take minutes and use substantial disk space. Leave semantic-search scan roots empty unless that scope is intentional; use notes-only scans for cross-project recall.
-
-From a shell, the equivalent configuration interface is:
-
-```sh
-printf '%s\n' '{"scan_root":"/path/to/projects"}' | claude plugin configure memory@decode-plugins --values-stdin
-```
-
-Data is shared across these harnesses and Decode, so the engine and indexes can be reused. It lives under `DECODE_PLUGINS_DATA` (default `~/.decode/plugin-data`):
-
-- `bin/<release>/decode-semantic-<platform>`: the engine binary.
-- `memory/`: the notes index and embedding model, the same folder Decode's own notes search uses.
-- `semantic-search/`: the code index and model, used only when Decode is not installed. With Decode installed in VS Code, semantic-search reads and updates Decode's own semantic index in its VS Code global storage (`~/Library/Application Support/Code/User/globalStorage/ultra.decode` on macOS, `~/.config/Code/User/globalStorage/ultra.decode` on Linux), so a project Decode already indexed is ready at once. Setting `DECODE_PLUGINS_DATA` keeps everything under that folder instead.
-
-The past-chat index below stays per harness, in the plugin's own data folder.
-
-Indexes stay on this machine; no account, project notes, source files, or credentials are distributed with this repository. On first use, the engine downloads and verifies its pinned `minishlab/potion-code-16M-v2` embedding model from Hugging Face. Model and index directories include the model revision, so upgrading to v2 rebuilds indexes rather than mixing v1 and v2 embeddings. Release downloads pin a version and verify the release's SHA-256 checksum before execution. A checksum authenticates integrity relative to this repository's release, not a separate signing identity.
-
-### Optional: search this harness's past chats
-
-Off by default. Claude Code and Codex have no semantic search over their own past sessions; this option adds one. Turn it on and memory exposes a second tool, `search_chats`, over your own **past sessions of that harness**: Claude Code reads `~/.claude/projects`, Codex reads `~/.codex/sessions`. While it is off, the `chats` server starts with no tools and indexes nothing.
-
-- **Claude Code:** set the memory option `index_chats` to true (`/plugin`, or `printf '%s\n' '{"index_chats":"true"}' | claude plugin configure memory@decode-plugins --values-stdin`).
-- **Codex (and Claude):** create the empty file `~/.config/decode-plugins/index-chats` (under `$XDG_CONFIG_HOME` when set), or export `DECODE_PLUGINS_INDEX_CHATS=true` for the harness process. The file also works for a Codex started from the desktop app.
-
-Only user and assistant prose is indexed. Tool calls and outputs, reasoning, and injected system or environment blocks are left out, and so is Claude's subagent traffic. The prose is extracted into plain markdown under the plugin data folder (`<data>/chats/corpus/<project>/chats/<session>--pNNN.md`, split below the engine's 1 MB file limit) and served by the same engine as the notes search, so chat text and its derived index stay on this machine. The extract is refreshed when the server starts and every 30 seconds while it runs, re-reading only transcripts whose size or mtime changed; the engine notices the changed files on the next search.
-
-Each hit is `path:lines` of an extract. The file's first lines name the session id and its source transcript. The `## mN role (line L, time)` headers give the message position, where `L` is the line in the source JSONL. To read around a hit, read a wider line range of the extract; read the source transcript at line `L` to see the tool calls. `project` filters by the folder name in brackets and `workspace` ranks one project first.
-
-The embedding model is cloned from the notes index copy where supported, otherwise copied. RAM and index size grow with the amount of extracted prose rather than the size of the raw transcripts.
-
-### Workflow and hooks
-
-Invoke `/memory:memory` to create, recall, or update feature notes. The workflow lives once in [the memory document](plugins/memory/skills/memory/SKILL.md). Existing notes are never migrated automatically.
-
-Hooks activate only for root sessions in projects that already contain `memory/`:
-
-- SessionStart injects a discovery rule, up to ten active/paused feature slugs, and up to three matching feature notes from the memory index (using the opening prompt on startup when the client provides it, and the latest user messages on compact or resume). The rule and the skill tell agents to search the notes first and, when the notes do not fully answer, to search past chats with the harness's own search (or `search_chats` when the option above is on) before answering.
-- Stop reminds once after confirmed work without a corresponding committed feature-note update.
-- PreCompact blocks until the note is committed. Claude's recovery compaction can still expose the underlying context-limit error; the hook is not a way around an API limit.
-
-The hooks require a Git repository containing the notes. Subagents report outcomes rather than creating competing note updates. The hooks do not create repositories, commit, push, or alter project files themselves.
-
-## Codex CLI
-
-Thin `.codex-plugin` manifests reuse the same MCP launchers, workflow, and hook scripts; there is no second workflow copy. The separate marketplace schema is in [.agents/plugins/marketplace.json](.agents/plugins/marketplace.json).
-
-Codex CLI 0.169.0 is the tested native client. Native MCP declarations do not
-expand plugin-root placeholders. Its thin adapter therefore invokes the exact versioned copy under
-`CODEX_HOME/plugins/cache/decode-plugins/<plugin>/<version>/` (default
-`~/.codex`). This documented cache layout keeps the server's working directory
-at the current project rather than changing it to the plugin installation.
+## Codex
 
 ```sh
 codex plugin marketplace add tonioriol/decode-plugins
@@ -91,146 +31,66 @@ codex plugin add semantic-search@decode-plugins
 codex plugin add memory@decode-plugins
 ```
 
-Codex does not use the Claude dependency declaration, so install both explicitly. Set `DECODE_PLUGINS_SCAN_ROOT` and `DECODE_PLUGINS_SCAN_ROOT_2` in the Codex process environment for optional additional roots; the default is still current-project only. `CLAUDE_PLUGIN_DATA` is optional outside Claude; the past-chat index then lives in the standard user cache directory. The same scope warning applies: semantic-search scans ALL SOURCE CODE beneath those roots; broad scans may take minutes and use substantial disk space. Memory performs cheap NOTES-only scans. Codex uses these environment variables rather than Claude's `userConfig` fields.
-
-### MCP approval
-
-The native manifests enable only the read-only `search` and `project_search` tools
-and ship `default_tools_approval_mode: "approve"`. In Codex 0.169 this means no
-approval prompt is required, so `codex exec` can call them even when its approval
-policy is `never`. The defaults belong to each server inside the native
-`mcpServers` declaration, not Claude's MCP configuration. Existing per-plugin
-user policy overrides these defaults.
-
-For an existing installation that needs an explicit local policy, the equivalent
-Codex configuration is:
-
-```toml
-[plugins."memory@decode-plugins".mcp_servers.memory]
-enabled = true
-enabled_tools = ["search"]
-default_tools_approval_mode = "approve"
-
-[plugins."semantic-search@decode-plugins".mcp_servers.semantic-search]
-enabled = true
-enabled_tools = ["project_search"]
-default_tools_approval_mode = "approve"
-```
-
-### Hook trust
-
-Codex requires review of each exact hook definition after installation or an
-update. In interactive Codex 0.169, run **`/hooks`**, select an event such as
-**SessionStart**, press **Enter**, select and review the memory plugin handler,
-then press **`t`** to trust it. Repeat for **Stop** and **PreCompact**. On the
-event-list screen, **`t` trusts all hooks needing review**; use that only after
-reviewing all of them. Trust preserves enabled/disabled state, so a disabled
-handler must also be enabled with Space or Enter. At startup, Codex may instead
-offer **Review hooks**, **Trust all and continue**, or **Continue without trusting**.
-
-Do not copy trust hashes between machines or permanently bypass hook trust.
-`--dangerously-bypass-hook-trust` is only for vetted, bounded automation; it is
-not the installation procedure. The adapter retains Codex's native trust checks.
-Codex PreCompact uses `continue: false` and `stopReason`, stopping the turn before
-compaction instead of Claude's `decision: block` response. Malformed hook input or
-transcripts fail open and emit a diagnostic on stderr rather than silently losing
-the reminder.
-
-Pinned implementation references: [native MCP fields](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/codex-mcp/src/plugin_config.rs#L155-L197),
-[approval meaning](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/core/src/mcp_tool_call.rs#L2772-L2784),
-and [`/hooks` dispatch](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/tui/src/chatwidget/slash_dispatch.rs#L537-L539).
+Codex ignores plugin dependencies, so install both. The search tools are pre-approved. The hooks need trust: run `/hooks`, review the memory handlers for SessionStart, Stop and PreCompact, and press `t` on each.
 
 ## OpenCode
-
-These steps connect both local MCP servers and install the existing `memory` skill. They configure OpenCode itself, so a frontend that runs OpenCode uses the same setup. Install the [dependencies listed above](#claude-code) and keep a checkout at a stable location:
 
 ```sh
 git clone --branch v0.3.1 https://github.com/tonioriol/decode-plugins.git "$HOME/decode-plugins"
 ```
 
-1. Check `opencode --version`. Use [the V1 snippet](clients/opencode/opencode-v1.json) for 1.x, or [the V2 snippet](clients/opencode/opencode-v2.json) for 2.x. Replace `/absolute/path/to/decode-plugins` with the checkout's full path; in the V1 `file://` URL, percent-encode spaces and other URI delimiters. Merge the snippet into the existing file instead of replacing unrelated settings. Pick one scope:
-
-   | Scope | Merge into | Copy the skill to |
-   | --- | --- | --- |
-   | Global | `~/.config/opencode/opencode.json` (or `.jsonc`, under `$XDG_CONFIG_HOME/opencode` if set) | `~/.config/opencode/skills/memory/SKILL.md` (same XDG rule) |
-   | One project | `opencode.json` or `opencode.jsonc` at the project root | `.opencode/skills/memory/SKILL.md` at the project root |
-
-2. From the project root, set `dest` to the directory for your chosen scope and copy the skill. For a one-project install:
-
+1. Merge [opencode-v1.json](clients/opencode/opencode-v1.json) (OpenCode 1.x) or [opencode-v2.json](clients/opencode/opencode-v2.json) (2.x) into `~/.config/opencode/opencode.json`, or `opencode.json` in the project. Replace `/absolute/path/to/decode-plugins` with the clone path.
+2. Copy the skill:
    ```sh
-   dest=.opencode
+   dest=.opencode   # or "${XDG_CONFIG_HOME:-$HOME/.config}/opencode" for all projects
    mkdir -p "$dest/skills/memory"
-   cp "$HOME/decode-plugins/plugins/memory/skills/memory/SKILL.md" "$dest/skills/memory/SKILL.md"
+   cp "$HOME/decode-plugins/plugins/memory/skills/memory/SKILL.md" "$dest/skills/memory/"
    ```
+3. Restart OpenCode. `opencode mcp list` shows both servers.
 
-   For a global install, use `dest="${XDG_CONFIG_HOME:-$HOME/.config}/opencode"` instead. No additional rule is required. OpenCode also supports global `AGENTS.md` in its config directory and project `AGENTS.md`.
-
-3. Restart OpenCode in the project. `opencode mcp list` should show both servers connected. In 1.x, `opencode debug skill` lists `memory`. Ask OpenCode to load the `memory` skill and try `memory_search` or `semantic-search_project_search`.
-
-The V1 snippet registers a local JS plugin via `plugin`. On the first user message in an empty top-level session with `memory/`, it uses `chat.message` to pass the opening prompt to `session-start-index.sh` and add the SessionStart guidance and matching notes. An existing session, subagent, or project without `memory/` gets neither. V1 also exposes `session.created`, `session.idle`, and `experimental.session.compacting`; idle is a notification and compaction can augment the summary prompt, not defer compaction until a note is committed. The transcript-based Stop and PreCompact hooks are not installed. V2 has a different server plugin API (`session.hook("prompt" | "context" | "compaction", …)`); the V2 snippet installs the MCP servers only, with the skill available after the copy step above. No automatic session guidance, Stop, or PreCompact hooks are installed on V2.
-
-OpenCode discovers local JS/TS plugins globally in `~/.config/opencode/plugins/` and per project in `.opencode/plugins/`. V2 also has `opencode plugin add` for npm and npm-compatible Git packages, including the V2 plugin format via `plugins` in config. These Decode adapters are installed from the checkout as shown above, not published as an OpenCode package.
-
-Official docs checked 2026-11-21: [config](https://opencode.ai/docs/config/), [V1 MCP](https://opencode.ai/v1/docs/mcp-servers/), [V2 MCP](https://opencode.ai/docs/mcp-servers/), [skills](https://opencode.ai/docs/skills/), [rules](https://opencode.ai/docs/rules/), [V1 plugins and events](https://opencode.ai/v1/docs/plugins/), [V2 plugin installation](https://opencode.ai/docs/plugins/), [V2 server hooks](https://opencode.ai/docs/build/plugins/server), and the [V1 `chat.message` API](https://github.com/anomalyco/opencode/blob/v1.18.34/packages/plugin/src/index.ts).
+On 1.x a small plugin adds the session-start notes on the first message of a new session. 2.x gets the tools and the skill only. Neither gets the Stop or PreCompact reminders.
 
 ## Cursor
 
-These steps configure both MCP servers, the `memory` skill, and session-start guidance for Cursor Agent. Keep the same stable checkout and prerequisites as in [OpenCode](#opencode). Pick one scope:
+Use the same clone. Pick `~/.cursor/` for all projects or `.cursor/` in one project:
 
-| Scope | Directory for the MCP config, hooks config, and skill |
-| --- | --- |
-| Global | `~/.cursor/` |
-| One project | `.cursor/` at the project root |
+1. Merge [mcp.json](clients/cursor/mcp.json) into `mcp.json` there. Replace the clone path; keep `${workspaceFolder}`.
+2. Merge [hooks.json](clients/cursor/hooks.json) into `hooks.json` there. Replace the clone path.
+3. Copy `plugins/memory/skills/memory/SKILL.md` to `skills/memory/SKILL.md` there.
+4. Reload Cursor and check both servers under **Customize → MCP**.
 
-1. Merge [the MCP snippet](clients/cursor/mcp.json) into `mcp.json` in that directory; replace `/absolute/path/to/decode-plugins` with the checkout's full path. Keep `${workspaceFolder}` unchanged: Cursor expands it to the active project and the launchers use it to scope search. Use a single-folder workspace for this setup.
-2. Merge [the hooks snippet](clients/cursor/hooks.json) into `hooks.json` in the same directory, keeping `version: 1` and any existing hook entries. Replace the checkout path there too. The path is in a single-quoted shell argument; if your checkout has an apostrophe in its path, escape it for the shell or use a checkout path without one. Project hooks require a trusted workspace.
-3. From the project root, copy the skill for a one-project install:
+Only the session-start hook is wired up; Cursor's stop and compaction hooks can't run the reminders. Use a single-folder workspace.
 
-   ```sh
-   dest=.cursor
-   mkdir -p "$dest/skills/memory"
-   cp "$HOME/decode-plugins/plugins/memory/skills/memory/SKILL.md" "$dest/skills/memory/SKILL.md"
-   ```
+## Configuration
 
-   For a global install, use `dest="$HOME/.cursor"` instead. No rule is required. Cursor's optional global User Rules live in Cursor Settings; project Rules are `.cursor/rules/*.mdc` (or use `AGENTS.md`).
+**Scope.** Both tools search the current project only. To search more, set up to two extra roots: `scan_root` and `scan_root_2` in `/plugin` config on Claude Code, or `DECODE_PLUGINS_SCAN_ROOT` and `DECODE_PLUGINS_SCAN_ROOT_2` in the environment elsewhere. Set them per plugin:
 
-4. Restart Cursor Agent or reload the editor, open a new session in the project, and check that `memory` and `semantic-search` are enabled in **Customize → MCP** (or run `agent mcp list` in the CLI). Ask the agent to use the `memory` skill, or select it from the `/` menu.
+- memory reads only `memory/` and `docs/` folders, so a parent folder of all your projects is cheap.
+- semantic-search indexes all source code under the root. A big folder takes minutes and disk space the first time.
 
-The Cursor `sessionStart` adapter maps `session_id` and the single reported `workspace_roots` entry to the existing discovery hook, then returns its text as `additional_context`. It does nothing if Cursor does not report exactly one workspace root. Cursor's `beforeSubmitPrompt` can allow/block a prompt but does not return agent context. `stop` supports an automatic follow-up, not the existing transcript-based reminder. `preCompact` is observational and cannot postpone compaction. Neither is installed.
+**Past chats.** Off by default. Turn it on and memory adds `search_chats` over this harness's own past sessions (`~/.claude/projects` or `~/.codex/sessions`): set `index_chats` to true on Claude Code, or create the empty file `~/.config/decode-plugins/index-chats`. Only user and assistant text is indexed.
 
-Cursor supports its own plugin format and the Agent Plugins standard; official and team marketplaces install compatible bundles via **Customize**, and Cursor can load local development bundles if local imports are allowed. This repository does not publish a Cursor marketplace bundle: use the native config files above.
+**Data** lives in `~/.decode/plugin-data` (override with `DECODE_PLUGINS_DATA`): the engine binary, the notes index and, without Decode installed, the code index. With Decode installed, semantic-search shares Decode's own code index.
 
-Official docs checked 2026-11-21: [MCP](https://cursor.com/docs/context/mcp), [CLI MCP](https://cursor.com/docs/cli/mcp), [skills](https://cursor.com/docs/context/skills), [rules](https://cursor.com/docs/context/rules), [hooks and event contracts](https://cursor.com/docs/agent/hooks), and [plugins and marketplace](https://cursor.com/docs/plugins).
+## Hooks
 
-### Scope for OpenCode and Cursor
+Hooks run only in top-level sessions of projects that have a `memory/` folder in a Git repository:
 
-Without additional configuration the servers search only the opened project; no past-chat index is wired up for these two harnesses. To add scan roots, set `DECODE_PLUGINS_SCAN_ROOT` and `DECODE_PLUGINS_SCAN_ROOT_2` in each server's `environment` (OpenCode) or `env` (Cursor) object. Only set them where intended: semantic-search indexes all eligible **source code** under those roots, while memory searches only `memory/` and `docs/`.
+- **SessionStart** (startup, resume, after compaction): the note rule, up to ten open features and up to three notes matching the opening prompt or the latest messages.
+- **Stop**: one reminder when work was done but no note was committed.
+- **PreCompact**: holds compaction until the note is committed.
 
-## Development and testing
+Invoke `/memory:memory` to create, find or update notes. The workflow is in [SKILL.md](plugins/memory/skills/memory/SKILL.md).
+
+## Development
 
 ```sh
 python3 scripts/sync-launchers.py --check
 python3 scripts/audit.py
-python3 tests/test_launchers.py -v
+python3 -m unittest discover -s tests
 bash plugins/memory/hooks/test-hooks.sh
 bash plugins/memory/hooks/test-native-hooks.sh
 claude plugin validate . --strict
-claude plugin validate plugins/memory --strict
-claude plugin validate plugins/semantic-search --strict
 ```
 
-[scripts/decode-semantic.sh](scripts/decode-semantic.sh) is the canonical release bootstrap. After editing it, run `python3 scripts/sync-launchers.py` to package identical copies into the independently cached plugin roots. The checker rejects stale copies. Launcher fixtures exercise `gh` and public download, caching, checksum rejection, concurrent startup, the shared data layout, Decode's index, and safe path/scan arguments. Hook fixtures use real Git commits and native transcript shapes.
-
-[The packaged memory hook](plugins/memory/hooks/flush-hooks.sh) is the canonical
-hook source. If it is also deployed into another local plugin, check that copy
-with `python3 scripts/check-memory-hook.py /path/to/deployed/flush-hooks.sh`.
-The check fails on byte drift; the native hook tests also accept
-`MEMORY_HOOK_UNDER_TEST` to exercise a deployed copy against the same rollout
-fixtures. Codex 0.169 code-mode work is detected from completed command and
-file-change events, never by executing or interpreting transcript JavaScript.
-
-For isolated installation, set `CLAUDE_CONFIG_DIR` and `CODEX_HOME` to disposable directories. Codex also discovers home-wide instructions independently of `CODEX_HOME`; use a disposable home when verifying that only packaged content loads. Never replace a real user configuration with a test fixture. [Building and releasing](docs/building.md) documents the engine source, the release workflow and Windows.
-
-Before a release, the plugins are also checked end to end: a clean marketplace install in a disposable `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, a cold download of the pinned release, and real `search` and `project_search` calls from a model-driven session.
-
-References: [Claude dependencies](https://code.claude.com/docs/en/plugins/dependencies), [Claude manifest reference](https://code.claude.com/docs/en/plugins-reference), [Codex plugin packaging](https://developers.openai.com/plugins/build/plugins).
+[scripts/decode-semantic.sh](scripts/decode-semantic.sh) is the launcher source; run `python3 scripts/sync-launchers.py` after editing it. Engine source, builds and releases: [docs/building.md](docs/building.md).
