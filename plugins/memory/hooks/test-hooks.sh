@@ -167,7 +167,7 @@ out=$(stop)
 check "reason does not name the triggering commit" "$(grep -c -E 'a commit since|a file edit since|a subagent result since' <<<"$out" || true)" "0"
 check "reason says commits and installs are not entries" "$out" "Commits, pushes and installs are not entries"
 check "Stop reason allows stopping without an entry" "$out" "If nothing durable settled, just stop again"
-check "PreCompact reason says condense runs after the commit" "$(compact)" "runs on its own at the next request"
+check "PreCompact reason says compaction runs after the commit" "$(compact)" "runs on its own at the next request"
 
 config="$(dirname "$hook")/hooks.json"
 check "config: PreCompact fails closed" "$(jq -r 'any(.hooks.PreCompact[]; .matcher == "manual|auto" and any(.hooks[]; (.command|rtrimstr("\"")|endswith("flush-hooks.sh")) and .onFailure == "block"))' "$config")" "true"

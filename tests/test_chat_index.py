@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+import unittest.mock
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / 'plugins' / 'memory' / 'scripts' / 'chat-index.py'
@@ -112,46 +113,25 @@ class ChatIndex(unittest.TestCase):
         self.assertEqual(chat_index.sync('claude', self.out, self.home), (1, 1))
         self.assertEqual(list(self.extracted()), ['proj/chats/one--p001.md'])
 
+    def test_codex_home_relocates_the_sessions(self):
+        write_jsonl(Path(self.temp.name) / 'elsewhere/sessions/2026/11/15/rollout-y.jsonl', [
+            {'type': 'session_meta', 'payload': {'id': 'y', 'cwd': '/w/proj'}}, codex_message('user', 'where do sessions live?')])
+        with unittest.mock.patch.dict(os.environ, {'CODEX_HOME': str(Path(self.temp.name) / 'elsewhere')}):
+            chat_index.sync('codex', self.out)
+        self.assertIn('where do sessions live?', self.extracted()['proj/chats/y--p001.md'])
+
+    def test_moved_sessions_folder_keeps_the_extracts(self):
+        record = [{'type': 'session_meta', 'payload': {'id': 'y', 'cwd': '/w/proj'}}, codex_message('user', 'still here?')]
+        write_jsonl(self.home / '.codex/sessions/2026/11/15/rollout-y.jsonl', record)
+        chat_index.sync('codex', self.out, self.home)
+        write_jsonl(Path(self.temp.name) / 'moved/.codex/sessions/2026/11/15/rollout-y.jsonl', record)
+        chat_index.sync('codex', self.out, Path(self.temp.name) / 'moved')
+        self.assertIn('still here?', self.extracted()['proj/chats/y--p001.md'])
+
     def test_session_without_prose_leaves_no_file(self):
         write_jsonl(self.home / '.claude/projects/-w-proj/empty.jsonl', [claude('user', '<local-command-stdout>x</local-command-stdout>')])
         chat_index.sync('claude', self.out, self.home)
         self.assertEqual(self.extracted(), {})
-
-    def test_stub_serves_an_mcp_server_without_tools(self):
-        requests = '\n'.join(json.dumps(r) for r in [
-            {'jsonrpc': '2.0', 'id': 1, 'method': 'initialize', 'params': {'protocolVersion': '2025-06-18'}},
-            {'jsonrpc': '2.0', 'method': 'notifications/initialized'},
-            {'jsonrpc': '2.0', 'id': 2, 'method': 'tools/list'},
-        ]) + '\n'
-        out = subprocess.run(['python3', str(SCRIPT), 'stub'], input=requests, text=True, capture_output=True).stdout
-        replies = [json.loads(line) for line in out.splitlines()]
-        self.assertEqual([r['id'] for r in replies], [1, 2])
-        self.assertEqual(replies[1]['result'], {'tools': []})
-
-
-class ChatsServerSwitch(unittest.TestCase):
-    def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(dir=FIXTURES)
-        self.home = Path(self.temp.name)
-
-    def tearDown(self):
-        self.temp.cleanup()
-
-    def tools(self, **env):
-        base = {k: v for k, v in os.environ.items() if not k.startswith('DECODE_PLUGINS')}
-        base.update(HOME=str(self.home), CLAUDE_PLUGIN_DATA=str(self.home / 'data'), XDG_CONFIG_HOME=str(self.home / 'config'))
-        base.update(env)
-        request = json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'}) + '\n'
-        init = json.dumps({'jsonrpc': '2.0', 'id': 0, 'method': 'initialize', 'params': {}}) + '\n'
-        run = subprocess.run([str(ROOT / 'plugins/memory/scripts/chats-server.sh')], input=init + request, text=True,
-                             capture_output=True, env=base, timeout=20)
-        return run
-
-    def test_off_by_default_and_when_false(self):
-        for flag in ({}, {'DECODE_PLUGINS_INDEX_CHATS': 'false'}):
-            run = self.tools(**flag)
-            self.assertEqual(json.loads(run.stdout.splitlines()[1])['result'], {'tools': []})
-            self.assertFalse((self.home / 'data').exists())
 
 
 if __name__ == '__main__':

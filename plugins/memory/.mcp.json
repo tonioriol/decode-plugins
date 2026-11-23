@@ -10,10 +10,7 @@
     },
     "chats": {
       "type": "stdio",
-      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/chats-server.sh",
-      "env": {
-        "DECODE_PLUGINS_INDEX_CHATS": "${user_config.index_chats}"
-      }
+      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/chats-server.sh"
     }
   }
 }

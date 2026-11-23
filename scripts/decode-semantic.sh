@@ -6,7 +6,7 @@
 # the binary in bin/<release>/, the notes index in memory/. The servers pick their own --storage.
 # The engine downloads and verifies its pinned embedding model; the launcher only installs the binary.
 set -euo pipefail
-release=v0.3.1
+release=v0.3.2
 repo=tonioriol/decode-plugins
 data=${DECODE_PLUGINS_DATA:-$HOME/.decode/plugin-data}
 

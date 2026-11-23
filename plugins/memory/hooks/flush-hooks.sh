@@ -140,7 +140,7 @@ fi
 # commit or install itself instead of the result it shipped.
 reason="Memory check: work happened since this chat last committed its feature memory. If a durable result settled (diagnosis, decision, verified fix, measurement), record it in the feature's memory/<folder>/context.md via the memory skill and commit it (git must show a commit touching that folder). Commits, pushes and installs are not entries; cite their hashes inside the result they ship."
 if [[ $event == PreCompact ]]; then
- reason="$reason Do it now, before other work: the condense is postponed, and it runs on its own at the next request once that commit exists."
+ reason="$reason Do it now, before other work: compaction is postponed, and it runs on its own at the next request once that commit exists."
 else
  reason="$reason If nothing durable settled, just stop again (complete or ask); Stop reminds once per new item."
 fi

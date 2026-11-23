@@ -1,6 +1,6 @@
 {
   "name": "memory",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Durable project notes, recall, and lifecycle reminders.",
   "author": {
     "name": "tonioriol"
@@ -17,12 +17,6 @@
       "title": "Second additional project root",
       "description": "Optional parent folder for cheap cross-project NOTES scans (memory/ and docs/ only), not source-code indexing. Leave empty for current-project-only recall.",
       "default": ""
-    },
-    "index_chats": {
-      "type": "boolean",
-      "title": "Index past Claude Code chats",
-      "description": "Off by default. When on, memory also serves a search_chats tool over this machine's Claude Code session transcripts (user and assistant text only), extracted into the plugin's data folder and kept current while a session runs.",
-      "default": false
     }
   },
   "dependencies": [

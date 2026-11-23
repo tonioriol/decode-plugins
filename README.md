@@ -3,7 +3,7 @@
 Search by meaning for coding agents. One local engine, two plugins, for Claude Code, Codex, OpenCode and Cursor. No API key; nothing leaves your machine.
 
 - **Search** (`semantic-search`): a `project_search` tool that finds code by meaning and returns file, line and snippet. The engine is a Rust port of [MinishLab Semble](https://github.com/MinishLab/semble), 5.6× faster at the same quality (NDCG@10 0.855). [Benchmark](bench/semantic).
-- **Memory** (`memory`), built on Search: one note per topic in `memory/`, a `search` tool over `memory/` and `docs/`, and hooks that show matching notes at session start and remind the agent to update them. 25 of 30 past-work questions answered right, vs 17 from raw transcripts, with 2.5× fewer tokens. [Benchmark](bench/memory).
+- **Memory** (`memory`), built on Search: one note per topic in `memory/`, a `search` tool over `memory/` and `docs/`, a `search_chats` tool over your past sessions, and hooks that show matching notes at session start and remind the agent to update them. 25 of 30 past-work questions answered right, vs 17 from raw transcripts, with 2.5× fewer tokens. [Benchmark](bench/memory).
 
 Overview: [tonioriol.github.io/decode-semantic](https://tonioriol.github.io/decode-semantic/).
 
@@ -36,7 +36,7 @@ Codex ignores plugin dependencies, so install both. The search tools are pre-app
 ## OpenCode
 
 ```sh
-git clone --branch v0.3.1 https://github.com/tonioriol/decode-plugins.git "$HOME/decode-plugins"
+git clone --branch v0.3.2 https://github.com/tonioriol/decode-plugins.git "$HOME/decode-plugins"
 ```
 
 1. Merge [opencode-v1.json](clients/opencode/opencode-v1.json) (OpenCode 1.x) or [opencode-v2.json](clients/opencode/opencode-v2.json) (2.x) into `~/.config/opencode/opencode.json`, or `opencode.json` in the project. Replace `/absolute/path/to/decode-plugins` with the clone path.
@@ -68,7 +68,7 @@ Only the session-start hook is wired up; Cursor's stop and compaction hooks can'
 - memory reads only `memory/` and `docs/` folders, so a parent folder of all your projects is cheap.
 - semantic-search indexes all source code under the root. A big folder takes minutes and disk space the first time.
 
-**Past chats.** Off by default. Turn it on and memory adds `search_chats` over this harness's own past sessions (`~/.claude/projects` or `~/.codex/sessions`): set `index_chats` to true on Claude Code, or create the empty file `~/.config/decode-plugins/index-chats`. Only user and assistant text is indexed.
+**Past sessions.** On Claude Code and Codex, memory's `search_chats` searches that harness's own past sessions (`~/.claude/projects` or `~/.codex/sessions`). Only user and assistant text is indexed: no tool calls, tool output or reasoning. The text extract and its index live in the plugin's data folder, about twice the size of that text, and refresh every 30 seconds while a session runs. Measured on 5,880 Codex sessions (23 MB of text): first search 2.9 s, then about 10 ms, 109 MB of memory.
 
 **Data** lives in `~/.decode/plugin-data` (override with `DECODE_PLUGINS_DATA`): the engine binary, the notes index and, without Decode installed, the code index. With Decode installed, semantic-search shares Decode's own code index.
 

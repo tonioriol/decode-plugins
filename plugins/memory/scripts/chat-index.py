@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Opt-in past-chat index for the memory plugin.
+"""Past-chat index for the memory plugin.
 
 `sync` turns the harness's own session transcripts into plain markdown that the
-semantic engine indexes like any other notes folder; `stub` is the MCP server
-that runs instead of the engine while the option is off.
+semantic engine indexes like any other notes folder.
 
 Only user and assistant prose is extracted. Tool calls and outputs, reasoning
 and injected system/environment blocks are dropped. Output layout, one folder
@@ -35,13 +34,12 @@ def assistant_prose(text):
     return text.strip()
 
 
-def claude_sessions(home):
-    for path in sorted((home / '.claude' / 'projects').glob('*/*.jsonl')):
-        yield path
+def claude_sessions(root):
+    yield from sorted((root / 'projects').glob('*/*.jsonl'))
 
 
-def codex_sessions(home):
-    yield from sorted((home / '.codex' / 'sessions').rglob('*.jsonl'))
+def codex_sessions(root):
+    yield from sorted((root / 'sessions').rglob('*.jsonl'))
 
 
 def parse_claude(path):
@@ -97,7 +95,9 @@ def parse_codex(path):
     return session, cwd, messages
 
 
-HARNESSES = {'claude': (claude_sessions, parse_claude), 'codex': (codex_sessions, parse_codex)}
+# harness -> (session lister, parser, env var that relocates its data folder, default folder under home)
+HARNESSES = {'claude': (claude_sessions, parse_claude, 'CLAUDE_CONFIG_DIR', '.claude'),
+             'codex': (codex_sessions, parse_codex, 'CODEX_HOME', '.codex')}
 
 
 def project_name(cwd):
@@ -139,13 +139,13 @@ def write_if_changed(path, text):
 
 
 def sync(harness, out, home=None):
-    home = pathlib.Path(home or os.path.expanduser('~'))
-    list_sources, parse = HARNESSES[harness]
+    list_sources, parse, env_var, folder = HARNESSES[harness]
+    root = pathlib.Path(home) / folder if home else pathlib.Path(os.environ.get(env_var) or pathlib.Path.home() / folder)
     out = pathlib.Path(out)
     manifest_path = out / MANIFEST
     old = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
     new, changed = {}, 0
-    for source in list_sources(home):
+    for source in list_sources(root):
         stat = source.stat()
         stamp = [stat.st_size, stat.st_mtime_ns]
         entry = old.get(str(source))
@@ -160,49 +160,23 @@ def sync(harness, out, home=None):
                 target = folder / f'{session}--p{number:03d}.md'
                 write_if_changed(target, text)
                 files.append(str(target.relative_to(out)))
-        for stale in set(entry['files'] if entry else []) - set(files):
-            (out / stale).unlink(missing_ok=True)
         new[str(source)] = {'stamp': stamp, 'files': files}
         changed += 1
-    for source, entry in old.items():
-        if source not in new:
-            for stale in entry['files']:
-                (out / stale).unlink(missing_ok=True)
-            changed += 1
+    changed += len(old.keys() - new.keys())
+    # A file may now belong to another source (the same session reached through a moved folder), so keep every file still listed.
+    kept = {name for entry in new.values() for name in entry['files']}
+    for entry in old.values():
+        for stale in set(entry['files']) - kept:
+            (out / stale).unlink(missing_ok=True)
     out.mkdir(parents=True, exist_ok=True)
     write_if_changed(manifest_path, json.dumps(new, indent=1, sort_keys=True))
     return len(new), changed
 
 
-def stub():
-    """MCP server with no tools, used while past-chat indexing is off."""
-    for raw in sys.stdin:
-        try:
-            request = json.loads(raw)
-        except ValueError:
-            continue
-        method, ident = request.get('method'), request.get('id')
-        if ident is None:
-            continue
-        if method == 'initialize':
-            result = {'protocolVersion': (request.get('params') or {}).get('protocolVersion', '2025-06-18'),
-                      'capabilities': {'tools': {}}, 'serverInfo': {'name': 'memory-chats-off', 'version': '0'}}
-        elif method == 'tools/list':
-            result = {'tools': []}
-        elif method == 'ping':
-            result = {}
-        else:
-            print(json.dumps({'jsonrpc': '2.0', 'id': ident, 'error': {'code': -32601, 'message': 'method not found'}}), flush=True)
-            continue
-        print(json.dumps({'jsonrpc': '2.0', 'id': ident, 'result': result}), flush=True)
-
-
 if __name__ == '__main__':
     command = sys.argv[1] if len(sys.argv) > 1 else ''
-    if command == 'stub':
-        stub()
-    elif command == 'sync' and len(sys.argv) == 4 and sys.argv[2] in HARNESSES:
+    if command == 'sync' and len(sys.argv) == 4 and sys.argv[2] in HARNESSES:
         sessions, changed = sync(sys.argv[2], sys.argv[3])
         print(f'{sessions} sessions, {changed} re-extracted', file=sys.stderr)
     else:
-        raise SystemExit('usage: chat-index.py stub | sync claude|codex <out-dir>')
+        raise SystemExit('usage: chat-index.py sync claude|codex <out-dir>')

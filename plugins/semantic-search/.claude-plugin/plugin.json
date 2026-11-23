@@ -1,6 +1,6 @@
 {
   "name": "semantic-search",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Semantic code search for the current project by default. Optional scan roots index ALL SOURCE CODE, unlike memory's cheap NOTES scans. Broad cold scans can take minutes and use substantial disk space.",
   "author": {
     "name": "tonioriol"

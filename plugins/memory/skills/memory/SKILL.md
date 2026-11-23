@@ -162,7 +162,7 @@ rules) and let the LOG entry cite that commit.
 ### Query
 If the notes do not fully answer the question, search earlier conversations
 before answering or saying it is not recorded: use the harness's
-own past-chat search (it may call them agents, sessions or tasks); if it has
+own past-chat search (`search_chats`, or what the harness calls agents, sessions or tasks); if it has
 none, errors or finds nothing, grep its saved session transcripts on disk
 (transcript folders are hidden and often git-ignored, so `rg` skips them: use
 `grep -r` or `rg --no-ignore --hidden`). Resolve conflicting claims against
@@ -221,8 +221,8 @@ with `memory/`.
   feature paths and workspace-relative paths retain their repository; relative
   command paths resolve against the tool's `cwd`. It works whether `memory/` is
   its own repository, part of the project's, or in a nested repository. Stop
-  reminds once per item; PreCompact postpones the condense and hands the
-  worker the flush instruction, and the condense runs by itself at the next
+  reminds once per item; PreCompact postpones compaction and hands the
+  worker the flush instruction, and compaction runs by itself at the next
   request once that commit exists. It cannot see a user's "don't flush"; report that rather
   than retrying around it.
   `hooks/test-hooks.sh` runs the fixture tests.
