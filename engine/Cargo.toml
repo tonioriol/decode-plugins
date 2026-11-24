@@ -8,6 +8,7 @@ ignore = "0.4.34"
 inotify = { version = "0.11", default-features = false }
 kqueue = "1.2"
 memmap2 = "0.9"
+rayon = "1"
 
 [profile.release]
 lto = "thin"

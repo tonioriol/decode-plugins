@@ -1,21 +1,25 @@
 //! One source's index (Semble `SembleIndex` minus the model): chunks, their normalized embeddings and BM25 postings,
 //! updated a file at a time.
 //!
-//! The bulk lives in a persisted file (a [`Blob`]): embedding rows are mapped when it has an OS handle; chunk texts,
-//! the term dictionary and postings use positioned reads. Memory holds paths, lines, BM25 lengths and text locations,
-//! every [`SPARSE_EVERY`]th dictionary term, and the chunks added since the file was written (the overlay); chunks of the
-//! file replaced or removed since are masked. [`SourceIndex::write_to`] streams the live chunks of both into a new
+//! The bulk lives in a persisted file (a [`Blob`]): embedding rows, the term dictionary and postings are read from a
+//! map when it has an OS handle, else with positioned reads; chunk texts always use positioned reads. Embeddings are
+//! kept quantized ([`crate::quant`]), in the file and the overlay alike, so a chunk scores the same before and after
+//! the index is written. Memory holds paths, lines, BM25 lengths and text locations, every [`SPARSE_EVERY`]th
+//! dictionary term, and the chunks added since the file was written (the overlay); chunks of the file replaced or
+//! removed since are masked. [`SourceIndex::write_to`] streams the live chunks of both into a new
 //! file, which [`SourceIndex::open`] reads back.
 //!
-//! File layout, every number little-endian: the magic; the chunk texts back to back; one `f32` row per chunk; one
+//! File layout, every number little-endian: the magic; the chunk texts back to back; one quantized row per chunk; one
 //! record per chunk (first line, last line, BM25 length, text length: `u32` each); the postings, `(chunk u32,
-//! frequency u32)` pairs, term after term; the dictionary, terms in byte order, each a `u16` length, the bytes, a
-//! `u64` postings offset and a `u32` count; a JSON header with the files; then the six section offsets and the magic.
+//! frequency u32)` pairs, term after term; the dictionary, terms in byte order, each a `u32` length, the bytes, a
+//! `u64` postings offset and a `u32` count; a JSON header with the files; then the six section offsets and the
+//! magic.
 
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::fmt;
 use std::io::{self, BufWriter, Read, Write};
+use std::ops::Range;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -24,13 +28,16 @@ use crate::chunking::{ChunkText, chunk_source};
 use crate::embed::Embedder;
 use crate::languages::{ExtraGrammar, detect_language};
 use crate::mapped_file::MappedFile;
+use crate::quant;
 use crate::ranking::file_stem;
 use crate::tokens::tokenize;
 
 /// Bump when the persisted layout or anything that shapes chunks, tokens or embeddings changes.
-const MAGIC: [u8; 8] = *b"rsidx002";
+const MAGIC: [u8; 8] = *b"rsidx005";
 const CHUNK_RECORD: usize = 16;
 const POSTING: usize = 8;
+/// Bytes of a dictionary term's length.
+const TERM_LENGTH: usize = size_of::<u32>();
 const FOOTER: usize = 6 * 8 + MAGIC.len();
 /// One dictionary entry in this many is kept in memory; a lookup reads the entries between two of them.
 const SPARSE_EVERY: usize = 64;
@@ -184,8 +191,6 @@ pub(crate) struct Slot {
     pub(crate) path: Arc<str>,
     pub(crate) start_line: u32,
     pub(crate) end_line: u32,
-    /// BM25 document length: the token count.
-    pub(crate) length: u32,
     /// In the file: the text's byte offset. In the overlay: unused (the slot's position there locates it).
     text_at: u64,
     text_len: u32,
@@ -216,73 +221,11 @@ struct Base {
 #[derive(Debug, Clone, Default)]
 struct Overlay {
     contents: Vec<String>,
-    vectors: Vec<f32>,
+    /// One quantized row per chunk.
+    vectors: Vec<u8>,
     /// Each chunk's terms, to drop its postings when it is removed.
     terms: Vec<Vec<String>>,
     postings: BTreeMap<String, Vec<(u32, u32)>>,
-}
-
-/// Persisted floats may begin at any byte offset; the overlay already holds native floats.
-#[derive(Debug)]
-pub(crate) enum VectorRow<'a> {
-    Encoded(&'a [u8]),
-    Native(&'a [f32]),
-}
-
-/// Independent partial sums in [`VectorRow::dot`]: one serial float sum cannot be vectorized, since reordering it
-/// changes the result.
-const DOT_LANES: usize = 8;
-
-impl VectorRow<'_> {
-    /// The dot product with `query`, summed in the same order for both row kinds so a chunk scores the same in the
-    /// file and in the overlay.
-    pub(crate) fn dot(&self, query: &[f32]) -> f32 {
-        fn lanes(
-            blocks: impl Iterator<Item = [f32; DOT_LANES]>,
-            rest: impl Iterator<Item = f32>,
-            query: &[f32],
-        ) -> f32 {
-            let (query_blocks, query_rest) = query.as_chunks::<DOT_LANES>();
-            let mut lanes = [0.0_f32; DOT_LANES];
-            for (block, weights) in blocks.zip(query_blocks) {
-                for ((lane, value), weight) in lanes.iter_mut().zip(block).zip(weights) {
-                    *lane += value * weight;
-                }
-            }
-            lanes.iter().sum::<f32>()
-                + rest
-                    .zip(query_rest)
-                    .map(|(value, weight)| value * weight)
-                    .sum::<f32>()
-        }
-        match self {
-            Self::Encoded(bytes) => {
-                let (blocks, rest) = bytes.as_chunks::<4>().0.as_chunks::<DOT_LANES>();
-                lanes(
-                    blocks.iter().map(|block| block.map(f32::from_le_bytes)),
-                    rest.iter().copied().map(f32::from_le_bytes),
-                    query,
-                )
-            }
-            Self::Native(values) => {
-                let (blocks, rest) = values.as_chunks::<DOT_LANES>();
-                lanes(blocks.iter().copied(), rest.iter().copied(), query)
-            }
-        }
-    }
-
-    #[cfg(test)]
-    fn to_vec(&self) -> Vec<f32> {
-        match self {
-            Self::Encoded(bytes) => bytes
-                .as_chunks::<4>()
-                .0
-                .iter()
-                .map(|value| f32::from_le_bytes(*value))
-                .collect(),
-            Self::Native(values) => values.to_vec(),
-        }
-    }
 }
 
 /// A source's chunks, embeddings and BM25 postings. Cloning is cheap: the file and the overlay are shared until
@@ -292,6 +235,9 @@ pub struct SourceIndex {
     dim: usize,
     files: BTreeMap<Arc<str>, IndexedFile>,
     slots: Vec<Option<Slot>>,
+    /// Each slot's BM25 document length (its token count), dense for the BM25 loop; 0 once removed, which no slot
+    /// in a posting list has while live.
+    lengths: Vec<u32>,
     base: Option<Arc<Base>>,
     overlay: Arc<Overlay>,
     live: usize,
@@ -386,13 +332,13 @@ impl Read for Sequential<'_> {
 
 /// One dictionary entry: `(term, postings offset, count)`; `None` at the end.
 fn read_entry(reader: &mut impl Read) -> io::Result<Option<(Vec<u8>, u64, u32)>> {
-    let mut length = [0; 2];
+    let mut length = [0; TERM_LENGTH];
     match reader.read_exact(&mut length) {
         Ok(()) => {}
         Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => return Ok(None),
         Err(error) => return Err(error),
     }
-    let mut term = vec![0; usize::from(u16::from_le_bytes(length))];
+    let mut term = vec![0; to_usize(u64::from(u32::from_le_bytes(length)))?];
     reader.read_exact(&mut term)?;
     let mut tail = [0; 12];
     reader.read_exact(&mut tail)?;
@@ -436,6 +382,7 @@ impl SourceIndex {
             base: None,
             overlay: Arc::default(),
             live: 0,
+            lengths: Vec::new(),
             total_length: 0,
         }
     }
@@ -494,12 +441,13 @@ impl SourceIndex {
                 length += count;
             }
             let row = overlay.vectors.len();
-            overlay.vectors.extend_from_slice(
+            quant::quantize(
                 vectors
                     .get(index * self.dim..(index + 1) * self.dim)
                     .unwrap_or_default(),
+                &mut overlay.vectors,
             );
-            overlay.vectors.resize(row + self.dim, 0.0);
+            overlay.vectors.resize(row + quant::row_bytes(self.dim), 0);
             overlay.terms.push(names);
             let text_len = u32::try_from(chunk.content.len()).unwrap_or(u32::MAX);
             overlay.contents.push(chunk.content);
@@ -507,10 +455,10 @@ impl SourceIndex {
                 path: Arc::clone(&path),
                 start_line: chunk.start_line,
                 end_line: chunk.end_line,
-                length,
                 text_at: 0,
                 text_len,
             }));
+            self.lengths.push(length);
             self.live += 1;
             self.total_length += u64::from(length);
             slots.push(slot);
@@ -525,9 +473,9 @@ impl SourceIndex {
         };
         let first = self.base_chunks();
         for slot in file.slots {
-            let Some(entry) = self.slots.get_mut(slot as usize).and_then(Option::take) else {
+            if self.slots.get_mut(slot as usize).and_then(Option::take).is_none() {
                 continue;
-            };
+            }
             if slot >= first {
                 let overlay = Arc::make_mut(&mut self.overlay);
                 let position = (slot - first) as usize;
@@ -549,7 +497,9 @@ impl SourceIndex {
                 }
             }
             self.live -= 1;
-            self.total_length -= u64::from(entry.length);
+            if let Some(length) = self.lengths.get_mut(slot as usize) {
+                self.total_length -= u64::from(std::mem::take(length));
+            }
         }
     }
 
@@ -592,51 +542,38 @@ impl SourceIndex {
         }
     }
 
-    /// Calls `visit` with each live slot and its embedding row, in slot order. `bytes` is working memory for
-    /// non-file blobs; mapped rows are borrowed directly and decoded without alignment assumptions.
+    /// Calls `visit` with each live slot in `slots` and its quantized embedding row, in slot order. `bytes` is working
+    /// memory for non-file blobs; mapped rows are borrowed directly.
     pub(crate) fn scan_vectors(
         &self,
+        slots: Range<u32>,
         bytes: &mut Vec<u8>,
-        mut visit: impl FnMut(u32, VectorRow<'_>),
+        mut visit: impl FnMut(u32, &[u8]),
     ) -> io::Result<()> {
-        let dim = self.dim;
+        let row_len = quant::row_bytes(self.dim);
         let first = self.base_chunks();
         if let Some(base) = &self.base {
-            let mut start = 0_u32;
-            while start < first {
-                let count = (first - start).min(SCAN_ROWS);
+            let (mut start, end) = (slots.start.min(first), slots.end.min(first));
+            while start < end {
+                let count = (end - start).min(SCAN_ROWS);
                 if (start..start + count).any(|slot| self.slot(slot).is_some()) {
-                    let len = count as usize * dim * 4;
-                    let at = base.vectors_at + u64::from(start) * dim as u64 * 4;
-                    let data = match &base.mapped {
-                        Some(mapped) => mapped
-                            .bytes()
-                            .get(to_usize(at)?..to_usize(at)? + len)
-                            .ok_or_else(|| corrupt("truncated vector rows"))?,
-                        None => {
-                            bytes.resize(len, 0);
-                            base.blob.read_exact_at(bytes, at)?;
-                            bytes.as_slice()
-                        }
-                    };
-                    for offset in 0..count {
-                        let slot = start + offset;
+                    let len = count as usize * row_len;
+                    let at = base.vectors_at + u64::from(start) * row_len as u64;
+                    for (slot, row) in (start..).zip(base.bytes(at, len, bytes)?.chunks_exact(row_len)) {
                         if self.slot(slot).is_some() {
-                            let at = offset as usize * dim * 4;
-                            visit(
-                                slot,
-                                VectorRow::Encoded(data.get(at..at + dim * 4).unwrap_or_default()),
-                            );
+                            visit(slot, row);
                         }
                     }
                 }
                 start += count;
             }
         }
-        for (position, row) in self.overlay.vectors.chunks_exact(dim.max(1)).enumerate() {
-            let slot = first + u32::try_from(position).unwrap_or(u32::MAX);
-            if self.slot(slot).is_some() {
-                visit(slot, VectorRow::Native(row));
+        for slot in slots.start.max(first)..slots.end {
+            let at = (slot - first) as usize * row_len;
+            match self.overlay.vectors.get(at..at + row_len) {
+                Some(row) if self.slot(slot).is_some() => visit(slot, row),
+                Some(_) => {}
+                None => break,
             }
         }
         Ok(())
@@ -650,14 +587,20 @@ impl SourceIndex {
         out: &mut Vec<(u32, u32)>,
     ) -> io::Result<()> {
         if let Some(base) = &self.base {
-            bytes.clear();
-            base.postings(term.as_bytes(), bytes)?;
-            out.extend(decode_postings(bytes).filter(|(slot, _)| self.slot(*slot).is_some()));
+            out.extend(
+                decode_postings(base.postings(term.as_bytes(), bytes)?)
+                    .filter(|(slot, _)| self.length(*slot) > 0),
+            );
         }
         if let Some(list) = self.overlay.postings.get(term) {
             out.extend_from_slice(list);
         }
         Ok(())
+    }
+
+    /// The BM25 document length of the live chunk in `slot`; 0 for a removed one.
+    pub(crate) fn length(&self, slot: u32) -> u32 {
+        self.lengths.get(slot as usize).copied().unwrap_or(0)
     }
 
     /// Total BM25 document length over live chunks.
@@ -708,23 +651,22 @@ impl SourceIndex {
         }
 
         let vectors_at = out.at;
-        let row_bytes = self.dim * 4;
+        let row_bytes = quant::row_bytes(self.dim);
         for &slot in &order {
             match input.as_mut() {
                 Some((base, input)) if slot < first => {
                     buf.resize(row_bytes, 0);
                     input.read_exact_at(&mut buf, base.vectors_at + u64::from(slot) * row_bytes as u64)?;
+                    out.put(&buf)?;
                 }
                 _ => {
-                    let at = (slot - first) as usize * self.dim;
+                    let at = (slot - first) as usize * row_bytes;
                     buf.clear();
-                    for value in self.overlay.vectors.get(at..at + self.dim).unwrap_or_default() {
-                        buf.extend_from_slice(&value.to_le_bytes());
-                    }
+                    buf.extend_from_slice(self.overlay.vectors.get(at..at + row_bytes).unwrap_or_default());
                     buf.resize(row_bytes, 0);
+                    out.put(&buf)?;
                 }
             }
-            out.put(&buf)?;
         }
 
         let chunks_at = out.at;
@@ -734,7 +676,12 @@ impl SourceIndex {
             if let Some(number) = renumbered.get_mut(slot as usize) {
                 *number = u32::try_from(new).unwrap_or(u32::MAX);
             }
-            for value in [entry.start_line, entry.end_line, entry.length, entry.text_len] {
+            for value in [
+                entry.start_line,
+                entry.end_line,
+                self.length(slot),
+                entry.text_len,
+            ] {
                 out.put(&value.to_le_bytes())?;
             }
         }
@@ -804,7 +751,7 @@ impl SourceIndex {
 
         let terms_at = out.at;
         for (term, offset, count) in &dictionary {
-            let length = u16::try_from(term.len()).map_err(|_| corrupt("a term over 64 KB"))?;
+            let length = u32::try_from(term.len()).map_err(|_| corrupt("a term over 4 GB"))?;
             out.put(&length.to_le_bytes())?;
             out.put(term)?;
             out.put(&offset.to_le_bytes())?;
@@ -871,7 +818,7 @@ impl SourceIndex {
         }
         let chunks: u64 = header.files.iter().map(|file| u64::from(file.chunks)).sum();
         if postings_at - chunks_at != chunks * CHUNK_RECORD as u64
-            || chunks_at - vectors_at != chunks * dim as u64 * 4
+            || chunks_at - vectors_at != chunks * quant::row_bytes(dim) as u64
         {
             return Err(corrupt("sections of the wrong size"));
         }
@@ -879,6 +826,7 @@ impl SourceIndex {
         blob.read_exact_at(&mut records, chunks_at)?;
         let mut index = Self::new(dim);
         index.slots.reserve_exact(to_usize(chunks)?);
+        index.lengths.reserve_exact(to_usize(chunks)?);
         let mut records = records.as_chunks::<CHUNK_RECORD>().0.iter();
         let mut text_at = texts_at;
         for file in header.files {
@@ -890,12 +838,12 @@ impl SourceIndex {
                     path: Arc::clone(&path),
                     start_line: u32_at(record, 0),
                     end_line: u32_at(record, 4),
-                    length: u32_at(record, 8),
                     text_at,
                     text_len: u32_at(record, 12),
                 };
                 text_at += u64::from(slot.text_len);
-                index.total_length += u64::from(slot.length);
+                index.lengths.push(u32_at(record, 8));
+                index.total_length += u64::from(u32_at(record, 8));
                 slots.push(u32::try_from(index.slots.len()).unwrap_or(u32::MAX));
                 index.slots.push(Some(slot));
             }
@@ -916,7 +864,7 @@ impl SourceIndex {
         let mut at = terms_at;
         let mut count = 0_usize;
         while let Some((term, _, _)) = read_entry(&mut reader)? {
-            let next = at + 2 + term.len() as u64 + 12;
+            let next = at + (TERM_LENGTH + term.len() + 12) as u64;
             if count.is_multiple_of(SPARSE_EVERY) {
                 sparse.push((term.into_boxed_slice(), at));
             }
@@ -941,32 +889,45 @@ impl SourceIndex {
 }
 
 impl Base {
-    /// Appends the encoded postings of `term` to `out`; nothing when no chunk has it.
-    fn postings(&self, term: &[u8], out: &mut Vec<u8>) -> io::Result<()> {
+    /// The `len` bytes at `at`: borrowed from the map when the file has one, else read into `buf`.
+    fn bytes<'a>(&'a self, at: u64, len: usize, buf: &'a mut Vec<u8>) -> io::Result<&'a [u8]> {
+        match &self.mapped {
+            Some(mapped) => {
+                let start = to_usize(at)?;
+                start
+                    .checked_add(len)
+                    .and_then(|end| mapped.bytes().get(start..end))
+                    .ok_or_else(|| corrupt("a section past its end"))
+            }
+            None => {
+                buf.resize(len, 0);
+                self.blob.read_exact_at(buf, at)?;
+                Ok(buf.as_slice())
+            }
+        }
+    }
+
+    /// The encoded postings of `term`, empty when no chunk has it; `buf` is working memory.
+    fn postings<'a>(&'a self, term: &[u8], buf: &'a mut Vec<u8>) -> io::Result<&'a [u8]> {
         let after = self
             .sparse
             .partition_point(|(sampled, _)| sampled.as_ref() <= term);
         let Some(start) = after.checked_sub(1).and_then(|at| self.sparse.get(at)) else {
-            return Ok(());
+            return Ok(&[]);
         };
         let end = self.sparse.get(after).map_or(self.terms_end, |(_, at)| *at);
-        let mut block = vec![0; to_usize(end - start.1)?];
-        self.blob.read_exact_at(&mut block, start.1)?;
-        let mut reader = block.as_slice();
+        let mut block = Vec::new();
+        let mut reader = self.bytes(start.1, to_usize(end - start.1)?, &mut block)?;
         while let Some((found, offset, count)) = read_entry(&mut reader)? {
             match found.as_slice().cmp(term) {
                 Ordering::Less => {}
                 Ordering::Equal => {
-                    let at = out.len();
-                    out.resize(at + count as usize * POSTING, 0);
-                    return self
-                        .blob
-                        .read_exact_at(out.get_mut(at..).unwrap_or_default(), self.postings_at + offset);
+                    return self.bytes(self.postings_at + offset, count as usize * POSTING, buf);
                 }
                 Ordering::Greater => break,
             }
         }
-        Ok(())
+        Ok(&[])
     }
 }
 
@@ -1008,10 +969,10 @@ mod tests {
         out
     }
 
-    fn rows(index: &SourceIndex) -> Vec<(u32, Vec<f32>)> {
+    fn rows(index: &SourceIndex) -> Vec<(u32, Vec<u8>)> {
         let mut rows = Vec::new();
         index
-            .scan_vectors(&mut Vec::new(), |slot, row| {
+            .scan_vectors(0..u32::MAX, &mut Vec::new(), |slot, row| {
                 rows.push((slot, row.to_vec()));
             })
             .unwrap();
@@ -1040,61 +1001,30 @@ mod tests {
     }
 
     #[test]
-    fn misaligned_mapped_rows_match_native_scores_with_tombstones_and_overlay() {
+    fn mapped_rows_match_the_overlay_rows_they_were_written_from_with_tombstones() {
         let mut original = SourceIndex::new(WORDS.len());
         add(&mut original, "a.md", "alpha delta");
         add(&mut original, "b.md", "beta");
-        let baseline_rows = rows(&original);
         let written = bytes(&original);
-        let footer = written.len() - super::FOOTER;
-        assert_eq!(super::u64_at(&written, footer + 8) % 4, 3);
-        let path = std::env::temp_dir().join(format!("decode_semantic_misaligned_{}", std::process::id()));
+        let path = std::env::temp_dir().join(format!("decode_semantic_mapped_{}", std::process::id()));
         std::fs::write(&path, &written).unwrap();
         let blob = Arc::new(CountedBlob {
             inner: File::open(&path).unwrap(),
             reads: AtomicUsize::new(0),
         });
         let mut mapped = SourceIndex::open(blob.clone(), WORDS.len()).unwrap();
-        let snapshot = mapped.clone();
         std::fs::remove_file(&path).unwrap();
         blob.reads.store(0, Ordering::Relaxed);
-        assert_eq!(rows(&snapshot), rows(&original));
+        assert_eq!(rows(&mapped), rows(&original));
         mapped.remove("a.md");
         original.remove("a.md");
         add(&mut mapped, "c.md", "gamma delta");
         add(&mut original, "c.md", "gamma delta");
-        let query = [0.1, -0.7, 0.3, 0.2];
-        let mut scores = Vec::new();
-        mapped
-            .scan_vectors(&mut Vec::new(), |slot, row| {
-                scores.push((slot, row.dot(&query).to_bits()))
-            })
-            .unwrap();
-        let expected: Vec<_> = rows(&original)
-            .into_iter()
-            .map(|(slot, row)| (slot, super::VectorRow::Native(&row).dot(&query).to_bits()))
-            .collect();
-        assert_eq!(scores, expected);
+        assert_eq!(rows(&mapped), rows(&original));
         assert_eq!(
             blob.reads.load(Ordering::Relaxed),
             0,
             "mapped scans must not copy vector blocks through Blob"
-        );
-        assert_eq!(rows(&snapshot), baseline_rows);
-    }
-
-    #[test]
-    fn dot_covers_every_dimension_of_both_row_kinds() {
-        // 19 = two blocks of lanes and a tail.
-        let row: Vec<f32> = (0..19).map(|at| at as f32 * 0.25 - 2.0).collect();
-        let query: Vec<f32> = (0..19).map(|at| 1.0 / (at as f32 + 1.0)).collect();
-        let encoded: Vec<u8> = row.iter().flat_map(|value| value.to_le_bytes()).collect();
-        let expected: f32 = row.iter().zip(&query).map(|(value, weight)| value * weight).sum();
-        let native = super::VectorRow::Native(&row).dot(&query);
-        assert!((native - expected).abs() < 1e-5, "{native} vs {expected}");
-        assert_eq!(
-            super::VectorRow::Encoded(&encoded).dot(&query).to_bits(),
-            native.to_bits()
         );
     }
 
@@ -1197,6 +1127,45 @@ mod tests {
         let written = bytes(&index);
         assert!(SourceIndex::open(Arc::new(written.clone()), WORDS.len() + 1).is_err());
         assert!(SourceIndex::open(Arc::new(written[..written.len() - 1].to_vec()), WORDS.len()).is_err());
+    }
+
+    #[test]
+    fn a_corrupt_offset_past_the_address_space_is_an_error() {
+        let path =
+            std::env::temp_dir().join(format!("decode_semantic_offset_overflow_{}", std::process::id()));
+        let mut index = SourceIndex::new(WORDS.len());
+        add(&mut index, "a.md", "retry parser");
+        std::fs::write(&path, bytes(&index)).unwrap();
+        let file = std::fs::File::open(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        let reopened = SourceIndex::open(Arc::new(file), WORDS.len()).unwrap();
+        let base = reopened.base.as_ref().unwrap();
+        assert!(base.mapped.is_some());
+        assert!(base.bytes(u64::MAX - 3, 8, &mut Vec::new()).is_err());
+    }
+
+    #[test]
+    fn a_term_over_64_kb_persists_and_reopens() {
+        // A pasted hash or blob is one identifier; Semble's BM25 keeps it as a term.
+        let long = "f".repeat(70_000);
+        let mut index = SourceIndex::new(WORDS.len());
+        add(&mut index, "blob.md", &format!("alpha {long} beta\n"));
+        let restored = reopen(&index);
+        assert_eq!(postings(&restored, &long), vec![(0, 1)]);
+        assert_eq!(postings(&restored, "beta"), postings(&index, "beta"));
+    }
+
+    #[test]
+    fn a_reopened_dictionary_finds_terms_past_its_first_sparse_block() {
+        let words: Vec<String> = (0..super::SPARSE_EVERY * 3)
+            .map(|at| format!("w{at:03}"))
+            .collect();
+        let mut index = SourceIndex::new(WORDS.len());
+        add(&mut index, "many.md", &words.join(" "));
+        let restored = reopen(&index);
+        for word in &words {
+            assert_eq!(postings(&restored, word), vec![(0, 1)], "{word}");
+        }
     }
 
     #[test]

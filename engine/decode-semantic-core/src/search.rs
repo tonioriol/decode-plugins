@@ -3,16 +3,22 @@
 //! sources can be searched together: their BM25 statistics are pooled, as Semble's `SembleIndex.merge` does, and
 //! each source's fused scores are scaled by its boost.
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
+use std::ops::Range;
+
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::embed::Embedder;
 use crate::index::{Slot, SourceIndex};
+use crate::quant;
 use crate::ranking::{
     DefinitionPattern, count_keyword_matches, embedded_stem_ok, embedded_symbols, extract_symbol_name,
     file_stem, is_symbol_query, path_parts, path_penalty, query_keywords, resolve_alpha, stem_matches,
 };
 use crate::tokens::tokenize;
+use crate::top::TopScores;
 
 /// Semble `_RRF_K`.
 const RRF_K: f64 = 60.0;
@@ -151,8 +157,12 @@ pub fn search(
     let alpha = resolve_alpha(query);
     let candidates = top_k * 5;
 
-    let semantic = semantic_candidates(embedder, &corpus, query, candidates)?;
-    let bm25 = bm25_candidates(&corpus, query, candidates)?;
+    // BM25 runs on one thread while the pool's others scan the vectors.
+    let (semantic, bm25) = rayon::join(
+        || semantic_candidates(embedder, &corpus, query, candidates),
+        || bm25_candidates(&corpus, query, candidates),
+    );
+    let (semantic, bm25) = (semantic?, bm25?);
     let semantic_rrf = rrf(&semantic);
     let bm25_rrf = rrf(&bm25);
 
@@ -197,33 +207,59 @@ pub fn search(
     Ok(hits)
 }
 
-/// The `count` most similar chunks by cosine similarity, best first.
+/// The `count` most similar chunks by cosine similarity of the quantized query and rows ([`quant::dot`]), best
+/// first. Each pool thread scans one contiguous run of a source's rows.
 fn semantic_candidates(
     embedder: &Embedder,
     corpus: &Corpus<'_>,
     query: &str,
     count: usize,
 ) -> io::Result<Vec<(Key, f64)>> {
-    let query_vector = embedder.embed(&[query.to_owned()]);
-    let mut scored: Vec<(Key, f32)> = Vec::new();
-    let mut bytes = Vec::new();
-    for (source, entry) in corpus.sources.iter().enumerate() {
-        entry.index.scan_vectors(&mut bytes, |slot, row| {
-            if entry
-                .index
-                .slot(slot)
-                .is_some_and(|chunk| under_prefix(&chunk.path, entry.path_prefix))
-            {
-                let score = row.dot(&query_vector);
-                scored.push(((source, slot), score));
-            }
-        })?;
+    let (scale, values) = quant::quantize_query(&embedder.embed(&[query.to_owned()]));
+    let parts = rayon::current_num_threads() as u32;
+    let runs: Vec<(usize, &SearchSource<'_>, Range<u32>)> = corpus
+        .sources
+        .iter()
+        .enumerate()
+        .flat_map(|(source, entry)| {
+            let slots = u32::try_from(entry.index.slot_count()).unwrap_or(u32::MAX);
+            let run = slots.div_ceil(parts).max(1);
+            (0..slots)
+                .step_by(run as usize)
+                .map(move |start| (source, entry, start..slots.min(start + run)))
+        })
+        .collect();
+    let scanned = runs
+        .into_par_iter()
+        .map(|(source, entry, slots)| {
+            let mut best = TopScores::new(count);
+            entry.index.scan_vectors(slots, &mut Vec::new(), |slot, row| {
+                if entry
+                    .index
+                    .slot(slot)
+                    .is_some_and(|chunk| under_prefix(&chunk.path, entry.path_prefix))
+                {
+                    best.push(((source, slot), quant::dot(scale, &values, row)));
+                }
+            })?;
+            Ok(best.finish())
+        })
+        .collect::<io::Result<Vec<_>>>()?;
+    let mut best = TopScores::new(count);
+    for candidate in scanned.into_iter().flatten() {
+        best.push(candidate);
     }
-    top_by_score(&mut scored, count);
-    Ok(scored
+    Ok(best
+        .finish()
         .into_iter()
         .map(|(key, score)| (key, f64::from(score)))
         .collect())
+}
+
+thread_local! {
+    /// BM25 totals of every searched slot, all zero between searches: a fresh array per search was a page fault per
+    /// 4 KB of slots before the first posting was scored.
+    static TOTALS: RefCell<Vec<f64>> = const { RefCell::new(Vec::new()) };
 }
 
 /// The `count` best chunks by BM25, best first, without zero scores. Corpus statistics cover every searched
@@ -250,12 +286,67 @@ fn bm25_candidates(corpus: &Corpus<'_>, query: &str, count: usize) -> io::Result
         *query_counts.entry(token.as_str()).or_insert(0) += 1;
     }
     // Dense per-slot totals, as Semble's score array: a map lookup per posting was a quarter of a warm search.
-    let mut totals: Vec<Vec<f64>> = corpus
+    let starts: Vec<usize> = corpus
         .sources
         .iter()
-        .map(|source| vec![0.0; source.index.slot_count()])
+        .scan(0, |next, source| {
+            let start = *next;
+            *next += source.index.slot_count();
+            Some(start)
+        })
         .collect();
-    let mut touched: Vec<Key> = Vec::new();
+    let slots = starts
+        .last()
+        .zip(corpus.sources.last())
+        .map_or(0, |(start, source)| start + source.index.slot_count());
+    TOTALS.with_borrow_mut(|totals| {
+        if totals.len() < slots {
+            totals.resize(slots, 0.0);
+        }
+        let mut touched: Vec<(Key, usize)> = Vec::new();
+        let scored = score_bm25(
+            corpus,
+            query_counts,
+            corpus_size,
+            average_length,
+            &starts,
+            totals,
+            &mut touched,
+        );
+        let mut best = TopScores::new(count);
+        for ((source, slot), at) in touched {
+            let total = totals.get_mut(at).map_or(0.0, std::mem::take);
+            // Semble accumulates into a float32 array.
+            #[expect(clippy::cast_possible_truncation, reason = "Semble's score array is float32")]
+            let total = total as f32;
+            if total > 0.0
+                && corpus
+                    .slot((source, slot))
+                    .is_some_and(|chunk| corpus.allows(source, &chunk.path))
+            {
+                best.push(((source, slot), total));
+            }
+        }
+        scored?;
+        Ok(best
+            .finish()
+            .into_iter()
+            .map(|(key, score)| (key, f64::from(score)))
+            .collect())
+    })
+}
+
+/// Adds each query term's BM25 score to `totals` (offset by the source's start) and lists every slot it first
+/// makes nonzero in `touched` with its position there, also when a posting read fails partway.
+fn score_bm25(
+    corpus: &Corpus<'_>,
+    query_counts: BTreeMap<&str, u32>,
+    corpus_size: f64,
+    average_length: f64,
+    starts: &[usize],
+    totals: &mut [f64],
+    touched: &mut Vec<(Key, usize)>,
+) -> io::Result<()> {
     let mut bytes = Vec::new();
     let mut postings: Vec<Vec<(u32, u32)>> = vec![Vec::new(); corpus.sources.len()];
     for (term, query_tf) in query_counts {
@@ -270,57 +361,24 @@ fn bm25_candidates(corpus: &Corpus<'_>, query: &str, count: usize) -> io::Result
         #[expect(clippy::cast_precision_loss, reason = "document counts are far below 2^52")]
         let df = document_frequency as f64;
         let idf = (1.0 + (corpus_size - df + 0.5) / (df + 0.5)).ln();
-        for (source, ((entry, list), totals)) in
-            corpus.sources.iter().zip(&postings).zip(&mut totals).enumerate()
-        {
+        for (source, ((entry, list), start)) in corpus.sources.iter().zip(&postings).zip(starts).enumerate() {
             for &(slot, tf) in list {
-                let length = entry.index.slot(slot).map_or(0, |chunk| chunk.length);
+                let length = entry.index.length(slot);
                 let tf = f64::from(tf);
                 let score = f64::from(query_tf) * idf * tf
                     / (K1 * (1.0 - B + B * f64::from(length) / average_length) + tf);
-                if let Some(total) = totals.get_mut(slot as usize) {
+                let at = start + slot as usize;
+                if let Some(total) = totals.get_mut(at) {
                     // Every term score is positive, so a zero total is a chunk not seen yet.
                     if *total == 0.0 {
-                        touched.push((source, slot));
+                        touched.push(((source, slot), at));
                     }
                     *total += score;
                 }
             }
         }
     }
-    let mut scored: Vec<(Key, f32)> = touched
-        .into_iter()
-        .filter(|key| {
-            corpus
-                .slot(*key)
-                .is_some_and(|slot| corpus.allows(key.0, &slot.path))
-        })
-        // Semble accumulates into a float32 array.
-        .map(|key| {
-            let total = totals
-                .get(key.0)
-                .and_then(|totals| totals.get(key.1 as usize))
-                .copied()
-                .unwrap_or(0.0);
-            (key, total as f32)
-        })
-        .filter(|(_, score)| *score > 0.0)
-        .collect();
-    top_by_score(&mut scored, count);
-    Ok(scored
-        .into_iter()
-        .map(|(key, score)| (key, f64::from(score)))
-        .collect())
-}
-
-/// Keeps the `count` highest scores, sorted best first (ties by key).
-fn top_by_score(scored: &mut Vec<(Key, f32)>, count: usize) {
-    let order = |a: &(Key, f32), b: &(Key, f32)| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0));
-    if scored.len() > count && count > 0 {
-        scored.select_nth_unstable_by(count - 1, order);
-        scored.truncate(count);
-    }
-    scored.sort_by(order);
+    Ok(())
 }
 
 /// Semble `_rrf_scores`: `1 / (60 + rank)` by descending raw score.
@@ -538,6 +596,67 @@ mod tests {
         hits.iter()
             .map(|hit| (hit.source.as_str(), hit.path.as_str()))
             .collect()
+    }
+
+    #[test]
+    fn parallel_semantic_runs_match_one_full_sort_across_file_overlay_and_removed_slots() {
+        fn pairs(list: &[(String, String)]) -> Vec<(&str, &str)> {
+            list.iter()
+                .map(|(path, text)| (path.as_str(), text.as_str()))
+                .collect()
+        }
+        let embedder = test_embedder(WORDS).unwrap();
+        let texts: Vec<(String, String)> = (0..41)
+            .map(|at| {
+                let words = [WORDS[at % 4], WORDS[at * 7 % 4]];
+                (format!("f{at:02}.md"), words.join(" "))
+            })
+            .collect();
+        let (written, added) = texts.split_at(33);
+        let mut bytes = Vec::new();
+        index(&pairs(written)).write_to(&mut bytes).unwrap();
+        let mut source = SourceIndex::open(std::sync::Arc::new(bytes), WORDS.len()).unwrap();
+        source.remove("f03.md");
+        for (path, text) in added {
+            source.upsert(
+                path,
+                FileStamp { mtime_ns: 0, size: 0 },
+                PreparedFile::new(&embedder, path, text),
+            );
+        }
+        source.remove("f35.md");
+        let query = "retry parser";
+        let (scale, values) = crate::quant::quantize_query(&embedder.embed(&[query.to_owned()]));
+        let mut expected = Vec::new();
+        source
+            .scan_vectors(0..u32::MAX, &mut Vec::new(), |slot, row| {
+                expected.push(((0, slot), crate::quant::dot(scale, &values, row)));
+            })
+            .unwrap();
+        expected.sort_by(crate::score_order);
+        let sources = [SearchSource {
+            name: "code",
+            index: &source,
+            boost: 1.0,
+            path_prefix: None,
+        }];
+        let corpus = super::Corpus { sources: &sources };
+        for threads in [1, 3, 7] {
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .unwrap();
+            for count in [1, 5, 50] {
+                let found =
+                    pool.install(|| super::semantic_candidates(&embedder, &corpus, query, count).unwrap());
+                let wanted: Vec<_> = expected
+                    .iter()
+                    .take(count)
+                    .map(|(key, score)| (*key, f64::from(*score)))
+                    .collect();
+                assert_eq!(found, wanted, "{threads} threads, top {count}");
+            }
+        }
     }
 
     #[test]

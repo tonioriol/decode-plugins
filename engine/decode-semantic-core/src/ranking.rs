@@ -111,14 +111,12 @@ pub(crate) fn embedded_symbols(query: &str) -> BTreeSet<String> {
 
 /// Semble `_definition_pattern` for one symbol: the general and the SQL definition matcher.
 #[derive(Debug)]
-pub(crate) struct DefinitionPattern {
-    general: Regex,
-    sql: Regex,
-}
+pub(crate) struct DefinitionPattern(Regex);
 
 impl DefinitionPattern {
-    /// Matchers for definitions of `symbol`. Python's `(?<=\s)` lookbehind becomes a consumed `\s`: only whether a
-    /// match exists is ever asked.
+    /// Matchers for definitions of `symbol`: Semble's general and case-insensitive SQL patterns as one regex, so
+    /// a chunk is scanned once. Python's `(?<=\s)` lookbehind becomes a consumed `\s`: only whether a match exists
+    /// is ever asked.
     pub(crate) fn new(symbol: &str) -> Option<Self> {
         let alternatives = |keywords: &[&str]| {
             keywords
@@ -131,23 +129,18 @@ impl DefinitionPattern {
             r")\s+(?:[A-Za-z_][A-Za-z0-9_]*(?:\.|::))*{}(?:\s|[<({{:\[;]|$)",
             regex::escape(symbol)
         );
-        Some(Self {
-            general: Regex::new(&format!(
-                r"(?m)(?:^|\s)(?:{}{suffix}",
-                alternatives(DEFINITION_KEYWORDS)
-            ))
-            .ok()?,
-            sql: Regex::new(&format!(
-                r"(?mi)(?:^|\s)(?:{}{suffix}",
-                alternatives(SQL_DEFINITION_KEYWORDS)
-            ))
-            .ok()?,
-        })
+        Regex::new(&format!(
+            r"(?m)(?:^|\s)(?:{}{suffix}|(?i:(?:^|\s)(?:{}{suffix})",
+            alternatives(DEFINITION_KEYWORDS),
+            alternatives(SQL_DEFINITION_KEYWORDS)
+        ))
+        .ok()
+        .map(Self)
     }
 
     /// Semble `_chunk_defines_symbol`.
     pub(crate) fn defined_in(&self, content: &str) -> bool {
-        self.general.is_match(content) || self.sql.is_match(content)
+        self.0.is_match(content)
     }
 }
 

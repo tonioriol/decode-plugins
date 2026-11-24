@@ -239,7 +239,7 @@ dependencies = [
 
 [[package]]
 name = "decode-semantic"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "decode-semantic-core",
  "ignore",
@@ -253,12 +253,13 @@ dependencies = [
 
 [[package]]
 name = "decode-semantic-core"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "cc",
  "globset",
  "memmap2",
  "model2vec-rs",
+ "rayon",
  "regex",
  "serde",
  "serde_json",

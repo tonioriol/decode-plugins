@@ -1,7 +1,7 @@
 [package]
 name = "decode-semantic-core"
 description = "Semantic code search engine: tree-sitter chunks, model2vec embeddings, BM25 and hybrid ranking (Decode Semantic, a Rust port of MinishLab Semble)."
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 rust-version = "1.88"
 license = "MIT"
@@ -30,6 +30,7 @@ test-util = []
 
 [dependencies]
 memmap2 = { workspace = true }
+rayon = { workspace = true }
 # `fancy-regex` on tokenizers directly: model2vec-rs's own `fancy-regex` feature also turns on the tokenizers progress bar
 # (indicatif, whose number_prefix is unmaintained) and the esaxx C++ trainer, neither used to encode.
 model2vec-rs = { version = "0.4", default-features = false, features = ["local-only"] }
