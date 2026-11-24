@@ -249,7 +249,13 @@ fn bm25_candidates(corpus: &Corpus<'_>, query: &str, count: usize) -> io::Result
     for token in &tokens {
         *query_counts.entry(token.as_str()).or_insert(0) += 1;
     }
-    let mut scores: BTreeMap<Key, f64> = BTreeMap::new();
+    // Dense per-slot totals, as Semble's score array: a map lookup per posting was a quarter of a warm search.
+    let mut totals: Vec<Vec<f64>> = corpus
+        .sources
+        .iter()
+        .map(|source| vec![0.0; source.index.slot_count()])
+        .collect();
+    let mut touched: Vec<Key> = Vec::new();
     let mut bytes = Vec::new();
     let mut postings: Vec<Vec<(u32, u32)>> = vec![Vec::new(); corpus.sources.len()];
     for (term, query_tf) in query_counts {
@@ -264,25 +270,40 @@ fn bm25_candidates(corpus: &Corpus<'_>, query: &str, count: usize) -> io::Result
         #[expect(clippy::cast_precision_loss, reason = "document counts are far below 2^52")]
         let df = document_frequency as f64;
         let idf = (1.0 + (corpus_size - df + 0.5) / (df + 0.5)).ln();
-        for (source, (entry, list)) in corpus.sources.iter().zip(&postings).enumerate() {
+        for (source, ((entry, list), totals)) in
+            corpus.sources.iter().zip(&postings).zip(&mut totals).enumerate()
+        {
             for &(slot, tf) in list {
                 let length = entry.index.slot(slot).map_or(0, |chunk| chunk.length);
                 let tf = f64::from(tf);
                 let score = f64::from(query_tf) * idf * tf
                     / (K1 * (1.0 - B + B * f64::from(length) / average_length) + tf);
-                *scores.entry((source, slot)).or_insert(0.0) += score;
+                if let Some(total) = totals.get_mut(slot as usize) {
+                    // Every term score is positive, so a zero total is a chunk not seen yet.
+                    if *total == 0.0 {
+                        touched.push((source, slot));
+                    }
+                    *total += score;
+                }
             }
         }
     }
-    let mut scored: Vec<(Key, f32)> = scores
+    let mut scored: Vec<(Key, f32)> = touched
         .into_iter()
-        .filter(|(key, _)| {
+        .filter(|key| {
             corpus
                 .slot(*key)
                 .is_some_and(|slot| corpus.allows(key.0, &slot.path))
         })
         // Semble accumulates into a float32 array.
-        .map(|(key, score)| (key, score as f32))
+        .map(|key| {
+            let total = totals
+                .get(key.0)
+                .and_then(|totals| totals.get(key.1 as usize))
+                .copied()
+                .unwrap_or(0.0);
+            (key, total as f32)
+        })
         .filter(|(_, score)| *score > 0.0)
         .collect();
     top_by_score(&mut scored, count);
@@ -608,6 +629,54 @@ mod tests {
         assert_eq!(ranked(&under(Some("./net"))), [("code", "net/retry.rs")]);
         assert_eq!(under(Some("net/")).len(), 1);
         assert_eq!(under(None).len(), 3);
+    }
+
+    #[test]
+    fn bm25_adds_each_query_terms_score_to_its_chunk_in_its_source() {
+        let code = index(&[
+            ("net/retry.rs", "fn retry_loop() { backoff(); retry(); }\n"),
+            ("lex/parser.rs", "fn parse() { token(); retry(); }\n"),
+        ]);
+        let notes = index(&[("retry-notes.md", "backoff before the next attempt\n")]);
+        let sources = [
+            SearchSource {
+                name: "code",
+                index: &code,
+                boost: 1.0,
+                path_prefix: None,
+            },
+            SearchSource {
+                name: "notes",
+                index: &notes,
+                boost: 1.0,
+                path_prefix: None,
+            },
+        ];
+        let corpus = super::Corpus { sources: &sources };
+        let scores = |query: &str| super::bm25_candidates(&corpus, query, 10).unwrap();
+        let both = scores("retry backoff");
+        let mut keys: Vec<_> = both.iter().map(|(key, _)| *key).collect();
+        keys.sort_unstable();
+        keys.dedup();
+        assert_eq!(keys.len(), both.len(), "{both:?}");
+        assert_eq!(
+            keys.iter().filter(|(source, _)| *source == 1).count(),
+            1,
+            "{both:?}"
+        );
+        let single = [scores("retry"), scores("backoff")];
+        for (key, score) in &both {
+            let expected: f64 = single
+                .iter()
+                .flatten()
+                .filter(|(other, _)| other == key)
+                .map(|(_, score)| score)
+                .sum();
+            assert!(
+                (score - expected).abs() < 1e-5 * expected,
+                "{key:?}: {score} vs {expected}"
+            );
+        }
     }
 
     #[test]

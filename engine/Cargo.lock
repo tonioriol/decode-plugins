@@ -239,7 +239,7 @@ dependencies = [
 
 [[package]]
 name = "decode-semantic"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "decode-semantic-core",
  "ignore",
@@ -253,7 +253,7 @@ dependencies = [
 
 [[package]]
 name = "decode-semantic-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "cc",
  "globset",

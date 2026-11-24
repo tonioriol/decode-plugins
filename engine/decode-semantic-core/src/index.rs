@@ -229,21 +229,45 @@ pub(crate) enum VectorRow<'a> {
     Native(&'a [f32]),
 }
 
+/// Independent partial sums in [`VectorRow::dot`]: one serial float sum cannot be vectorized, since reordering it
+/// changes the result.
+const DOT_LANES: usize = 8;
+
 impl VectorRow<'_> {
+    /// The dot product with `query`, summed in the same order for both row kinds so a chunk scores the same in the
+    /// file and in the overlay.
     pub(crate) fn dot(&self, query: &[f32]) -> f32 {
+        fn lanes(
+            blocks: impl Iterator<Item = [f32; DOT_LANES]>,
+            rest: impl Iterator<Item = f32>,
+            query: &[f32],
+        ) -> f32 {
+            let (query_blocks, query_rest) = query.as_chunks::<DOT_LANES>();
+            let mut lanes = [0.0_f32; DOT_LANES];
+            for (block, weights) in blocks.zip(query_blocks) {
+                for ((lane, value), weight) in lanes.iter_mut().zip(block).zip(weights) {
+                    *lane += value * weight;
+                }
+            }
+            lanes.iter().sum::<f32>()
+                + rest
+                    .zip(query_rest)
+                    .map(|(value, weight)| value * weight)
+                    .sum::<f32>()
+        }
         match self {
-            Self::Encoded(bytes) => bytes
-                .as_chunks::<4>()
-                .0
-                .iter()
-                .zip(query)
-                .map(|(value, weight)| f32::from_le_bytes(*value) * weight)
-                .sum(),
-            Self::Native(values) => values
-                .iter()
-                .zip(query)
-                .map(|(value, weight)| value * weight)
-                .sum(),
+            Self::Encoded(bytes) => {
+                let (blocks, rest) = bytes.as_chunks::<4>().0.as_chunks::<DOT_LANES>();
+                lanes(
+                    blocks.iter().map(|block| block.map(f32::from_le_bytes)),
+                    rest.iter().copied().map(f32::from_le_bytes),
+                    query,
+                )
+            }
+            Self::Native(values) => {
+                let (blocks, rest) = values.as_chunks::<DOT_LANES>();
+                lanes(blocks.iter().copied(), rest.iter().copied(), query)
+            }
         }
     }
 
@@ -532,6 +556,11 @@ impl SourceIndex {
     /// The chunk in `slot`, if it is live.
     pub(crate) fn slot(&self, slot: u32) -> Option<&Slot> {
         self.slots.get(slot as usize).and_then(Option::as_ref)
+    }
+
+    /// One more than the highest slot number, live or not.
+    pub(crate) fn slot_count(&self) -> usize {
+        self.slots.len()
     }
 
     /// The live slots of each file.
@@ -1043,16 +1072,7 @@ mod tests {
             .unwrap();
         let expected: Vec<_> = rows(&original)
             .into_iter()
-            .map(|(slot, row)| {
-                (
-                    slot,
-                    row.iter()
-                        .zip(&query)
-                        .map(|(value, weight)| value * weight)
-                        .sum::<f32>()
-                        .to_bits(),
-                )
-            })
+            .map(|(slot, row)| (slot, super::VectorRow::Native(&row).dot(&query).to_bits()))
             .collect();
         assert_eq!(scores, expected);
         assert_eq!(
@@ -1061,6 +1081,21 @@ mod tests {
             "mapped scans must not copy vector blocks through Blob"
         );
         assert_eq!(rows(&snapshot), baseline_rows);
+    }
+
+    #[test]
+    fn dot_covers_every_dimension_of_both_row_kinds() {
+        // 19 = two blocks of lanes and a tail.
+        let row: Vec<f32> = (0..19).map(|at| at as f32 * 0.25 - 2.0).collect();
+        let query: Vec<f32> = (0..19).map(|at| 1.0 / (at as f32 + 1.0)).collect();
+        let encoded: Vec<u8> = row.iter().flat_map(|value| value.to_le_bytes()).collect();
+        let expected: f32 = row.iter().zip(&query).map(|(value, weight)| value * weight).sum();
+        let native = super::VectorRow::Native(&row).dot(&query);
+        assert!((native - expected).abs() < 1e-5, "{native} vs {expected}");
+        assert_eq!(
+            super::VectorRow::Encoded(&encoded).dot(&query).to_bits(),
+            native.to_bits()
+        );
     }
 
     #[test]

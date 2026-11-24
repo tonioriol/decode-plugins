@@ -273,7 +273,7 @@ impl Engine {
             tests::pause_after_temp_open();
             index.write_to(tmp.as_file_mut())?;
 
-            // Match the Decode index's stable lock sibling; never remove it while another writer may use it.
+            // Match decode-index's stable lock sibling; never remove it while another writer may use it.
             let lock = fs::OpenOptions::new()
                 .read(true)
                 .write(true)

@@ -35,6 +35,14 @@ impl MappedFile {
         Ok(Self(Some(unsafe { Mmap::map(file)? })))
     }
 
+    /// Asks the kernel to read the mapped pages in ahead of use, without waiting for them.
+    pub fn will_need(&self) {
+        if let Some(map) = &self.0 {
+            // Only a hint: when refused, the pages come in as they are read.
+            drop(map.advise(memmap2::Advice::WillNeed));
+        }
+    }
+
     /// The mapped bytes, including an empty file's empty slice.
     pub fn bytes(&self) -> &[u8] {
         self.0.as_deref().unwrap_or_default()
