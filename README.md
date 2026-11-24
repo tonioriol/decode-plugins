@@ -2,8 +2,8 @@
 
 Search by meaning for coding agents. One local engine, two plugins, for Claude Code, Codex, OpenCode and Cursor. No API key; nothing leaves your machine.
 
-- **Search** (`semantic-search`): a `project_search` tool that finds code by meaning and returns file, line and snippet. The engine is a Rust port of [MinishLab Semble](https://github.com/MinishLab/semble), 5.6× faster at the same quality (NDCG@10 0.855). [Benchmark](bench/semantic).
-- **Memory** (`memory`), built on Search: one note per topic in `memory/`, a `search` tool over `memory/` and `docs/`, a `search_chats` tool over your past sessions, and hooks that show matching notes at session start and remind the agent to update them. 25 of 30 past-work questions answered right, vs 17 from raw transcripts, with 2.5× fewer tokens. [Benchmark](bench/memory).
+- **Search** (`semantic-search`): a `project_search` tool that finds code by meaning and returns file, line and snippet. The engine started as a Rust port of [MinishLab Semble](https://github.com/MinishLab/semble) and has been improved since. On real code, notes and past chats it answers warm searches 3.3–4.0× faster than Python Semble 0.7.3 with under half the peak memory (build just before v0.1.2), and scores NDCG@10 0.854 on Semble's own benchmark against Semble's 0.855 (v0.1.3). [Benchmark](bench/semantic).
+- **Memory** (`memory`), built on Search: one note per topic in `memory/`, a `search` tool over `memory/` and `docs/`, a `search_chats` tool over your past sessions, and hooks that show matching notes at session start and remind the agent to update them. 25 of 30 past-work questions answered right, vs 17 from raw transcripts, with 2.5× fewer tokens. [Benchmark](bench/memory). Since v0.1.3 the note search ranks better too: NDCG@10 0.68 → 0.80 on our note questions, 0.78 → 0.86 on a blind holdout ([details](bench/semantic#notes-ranking)).
 
 Overview: [tonioriol.github.io/decode-semantic](https://tonioriol.github.io/decode-semantic/).
 
@@ -68,7 +68,7 @@ Only the session-start hook is wired up; Cursor's stop and compaction hooks can'
 - memory reads only `memory/` and `docs/` folders, so a parent folder of all your projects is cheap.
 - semantic-search indexes all source code under the root. A big folder takes minutes and disk space the first time.
 
-**Past sessions.** On Claude Code and Codex, memory's `search_chats` searches that harness's own past sessions (`~/.claude/projects` or `~/.codex/sessions`). Only user and assistant text is indexed: no tool calls, tool output or reasoning. The text extract and its index live in the plugin's data folder, about twice the size of that text, and refresh every 30 seconds while a session runs. Measured on 5,880 Codex sessions (23 MB of text): first search 2.9 s, then about 10 ms, 109 MB of memory.
+**Past sessions.** On Claude Code and Codex, memory's `search_chats` searches that harness's own past sessions (`~/.claude/projects` or `~/.codex/sessions`). Only user and assistant text is indexed: no tool calls, tool output or reasoning. The text extract and its index live in the plugin's data folder, about twice the size of that text, and refresh every 30 seconds while a session runs. Measured on 14,562 of the author's sessions (429 MB of text) with a build just before v0.1.2: the first search, which builds the index, takes 56 s; later ones about 2.6 ms; 550 MB of memory when idle.
 
 **Data** lives in `~/.decode/plugin-data` (override with `DECODE_PLUGINS_DATA`): the engine binary, the notes index and, without Decode installed, the code index. With Decode installed, semantic-search shares Decode's own code index.
 
