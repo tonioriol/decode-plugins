@@ -36,7 +36,7 @@ Codex ignores plugin dependencies, so install both. The search tools are pre-app
 ## OpenCode
 
 ```sh
-git clone --branch v0.1.3 https://github.com/tonioriol/decode-plugins.git "$HOME/decode-plugins"
+git clone --branch v0.1.4 https://github.com/tonioriol/decode-plugins.git "$HOME/decode-plugins"
 ```
 
 1. Merge [opencode-v1.json](clients/opencode/opencode-v1.json) (OpenCode 1.x) or [opencode-v2.json](clients/opencode/opencode-v2.json) (2.x) into `~/.config/opencode/opencode.json`, or `opencode.json` in the project. Replace `/absolute/path/to/decode-plugins` with the clone path.

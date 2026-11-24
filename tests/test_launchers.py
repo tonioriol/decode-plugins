@@ -13,7 +13,7 @@ import unittest
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / '.agent-runs' / 'launcher-tests'
 FIXTURES.mkdir(parents=True, exist_ok=True)
-RELEASE = 'v0.1.3'
+RELEASE = 'v0.1.4'
 ASSET = 'decode-semantic-aarch64-apple-darwin'
 FAKE_BINARY = b'#!/usr/bin/env python3\nimport json,sys\nprint(json.dumps(sys.argv[1:]))\n'
 # Writes the release files the way gh (into --dir) or curl (to -o) would, logging each call.

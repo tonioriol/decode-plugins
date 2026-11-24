@@ -12,24 +12,10 @@ use ignore::WalkBuilder;
 pub const MAX_FILE_BYTES: u64 = 1_000_000;
 /// The most files one folder's index holds.
 pub const MAX_FILES: usize = 50_000;
-/// Directories that hold dependencies or build output, never indexed (Decode's list, so both index the same files).
-const SKIPPED_DIRS: &[&str] = &[
-    "node_modules",
-    "__pycache__",
-    "env",
-    "venv",
-    "target/dependency",
-    "build/dependencies",
-    "dist",
-    "out",
-    "bundle",
-    "vendor",
-    "tmp",
-    "temp",
-    "deps",
-    "pkg",
-    "Pods",
-];
+/// Dependency and build-output directories, never indexed at any depth: Semble `_DEFAULT_IGNORED_DIRS` without its
+/// hidden folders (the hidden folder rule skips those), plus `vendor`, where Go, Composer and Bundler keep copies of
+/// third-party code.
+const SKIPPED_DIRS: &[&str] = &["__pycache__", "node_modules", "venv", "dist", "build", "vendor"];
 pub(crate) const CUSTOM_IGNORES: [&str; 3] = [".rgignore", ".rooignore", ".decodeignore"];
 
 /// Whether `relative` (root-relative, `/`-separated) lies in one of [`SKIPPED_DIRS`] or a hidden folder.
@@ -37,9 +23,6 @@ fn in_skipped_dir(relative: &str) -> bool {
     relative
         .split('/')
         .any(|part| (part.starts_with('.') && part != ".") || SKIPPED_DIRS.contains(&part))
-        || SKIPPED_DIRS
-            .iter()
-            .any(|dir| relative.contains(&format!("/{dir}/")))
 }
 
 /// Which ignore files a listing applies.
@@ -52,10 +35,10 @@ pub enum Ignores {
 }
 
 /// The files of `root` the index may hold, by root-relative `/`-separated path, with their stamps: files of a
-/// language Semble reads, at most [`MAX_FILE_BYTES`] long, outside hidden and dependency directories, not ignored
+/// language Semble reads, at most [`MAX_FILE_BYTES`] long, outside hidden folders and [`SKIPPED_DIRS`], not ignored
 /// (`.gitignore` within the nearest Git repository; `.ignore`, `.rgignore`, `.rooignore`, `.decodeignore`; from
 /// parents too with [`Ignores::WithParents`]) and not matching `exclusions`. Only documentation files when
-/// `docs_only`. Symbolic links are not followed. Decode lists a folder the same way, so both can keep the same index.
+/// `docs_only`. Symbolic links are not followed.
 pub fn list(
     root: &Path,
     exclusions: &Exclusions,
@@ -157,8 +140,9 @@ mod tests {
             "big.rs",
             &"x".repeat(usize::try_from(MAX_FILE_BYTES).unwrap() + 1),
         );
-        write(root, "out/gen.rs", "fn o() {}\n");
-        write(root, "src/target/dependency/d.rs", "fn d() {}\n");
+        write(root, "src/build/gen.rs", "fn b() {}\n");
+        write(root, "vendor/v.rs", "fn v() {}\n");
+        write(root, "out/o.rs", "fn o() {}\n");
         write(root, "private/p.rs", "fn p() {}\n");
         write(root, ".rooignore", "private/\n");
         let none = Exclusions::new(&[]).unwrap();
@@ -169,10 +153,10 @@ mod tests {
                 .collect()
         };
 
-        assert_eq!(keys(&none, false), ["docs/guide.md", "src/lib.rs"]);
+        assert_eq!(keys(&none, false), ["docs/guide.md", "out/o.rs", "src/lib.rs"]);
         assert_eq!(keys(&none, true), ["docs/guide.md"]);
         let excluded = Exclusions::new(&["docs".to_owned()]).unwrap();
-        assert_eq!(keys(&excluded, false), ["src/lib.rs"]);
+        assert_eq!(keys(&excluded, false), ["out/o.rs", "src/lib.rs"]);
     }
 
     /// A project listing applies its parents' ignore files; a folder listed on its own applies only its own.

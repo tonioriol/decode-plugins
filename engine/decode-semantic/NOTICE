@@ -34,9 +34,3 @@ Citation requested by the Semble authors:
 
 The embedding model (minishlab/potion-code-16M-v2, MIT) is not part of this
 repository. It is downloaded at first use from Hugging Face.
-
-The list of dependency and build-output folders never indexed (src/files.rs,
-SKIPPED_DIRS) is the DIRS_TO_IGNORE list of Roo Code
-(https://github.com/RooCodeInc/Roo-Code, src/services/glob/constants.ts),
-Copyright Roo Code, Inc., licensed under the Apache License, Version 2.0
-(https://www.apache.org/licenses/LICENSE-2.0).
