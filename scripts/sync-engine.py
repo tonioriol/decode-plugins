@@ -10,6 +10,7 @@ tests. Run it, review the diff, commit.
 """
 import argparse
 import io
+import json
 import pathlib
 import re
 import shutil
@@ -54,6 +55,14 @@ def main():
             target = engine / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(tar.extractfile(member).read())
+
+    # The crates carry the plugin release version, not Decode's.
+    version = json.loads((root / "plugins/semantic-search/.claude-plugin/plugin.json").read_text())["version"]
+    for crate in CRATES:
+        cargo = engine / crate / "Cargo.toml"
+        text = re.sub(r'^version = "[^"]*"', f'version = "{version}"', cargo.read_text(), count=1, flags=re.M)
+        text = re.sub(r'(path = "\.\./decode-semantic-core", version = )"[^"]*"', rf'\g<1>"{version}"', text)
+        cargo.write_text(text)
 
     # Every `{ workspace = true }` dependency of the crates, pinned as Decode's workspace pins it.
     manifest = git(args.decode, "show", f"{workspace}/Cargo.toml").decode()
