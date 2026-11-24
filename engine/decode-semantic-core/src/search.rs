@@ -12,6 +12,7 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::embed::Embedder;
 use crate::index::{Slot, SourceIndex};
+use crate::languages::is_doc_path;
 use crate::quant;
 use crate::ranking::{
     DefinitionPattern, count_keyword_matches, embedded_stem_ok, embedded_symbols, extract_symbol_name,
@@ -38,6 +39,13 @@ const STEM_BOOST: f64 = 1.0;
 const SATURATION_THRESHOLD: usize = 1;
 /// Semble `_FILE_SATURATION_DECAY`.
 const SATURATION_DECAY: f64 = 0.5;
+/// Documentation chunks weigh this much in a search that also covers code, where the question is usually about code.
+const DOC_IN_CODE_PENALTY: f64 = 0.8;
+/// Per-file saturation without code: a notes file holds many separate entries, so each further section of it is
+/// discounted less than a code file's further chunks.
+const NOTES_SATURATION_DECAY: f64 = 0.75;
+/// Semantic weight of natural-language queries without code.
+const NOTES_ALPHA_NL: f64 = 0.3;
 
 /// One source to search and how much its results weigh.
 #[derive(Debug, Clone, Copy)]
@@ -127,6 +135,11 @@ impl<'a> Corpus<'a> {
         self.sources.get(source)?.index.slot(slot)
     }
 
+    /// Whether any source holds a code file: without one, notes are ranked as notes rather than as code docs.
+    fn has_code(&self) -> bool {
+        self.sources.iter().any(|source| source.index.has_code())
+    }
+
     /// Whether `path` of source `source` is under that source's prefix.
     fn allows(&self, source: usize, path: &str) -> bool {
         self.sources
@@ -154,7 +167,11 @@ pub fn search(
         return Ok(Vec::new());
     }
     let corpus = Corpus { sources };
-    let alpha = resolve_alpha(query);
+    let alpha = match resolve_alpha(query) {
+        // Notes repeat their headings' words, so the exact terms in BM25 pin the right section.
+        _ if !corpus.has_code() && !is_symbol_query(query) => NOTES_ALPHA_NL,
+        alpha => alpha,
+    };
     let candidates = top_k * 5;
 
     // BM25 runs on one thread while the pool's others scan the vectors.
@@ -470,6 +487,9 @@ fn boost_definitions(
         .collect();
     let names_lower: Vec<String> = names.iter().map(|name| name.to_lowercase()).collect();
     let tier = |key: Key, slot: &Slot| -> io::Result<f64> {
+        if is_doc_path(&slot.path) {
+            return Ok(0.0);
+        }
         let content = corpus.content(key)?;
         if !patterns.iter().any(|pattern| pattern.defined_in(&content)) {
             return Ok(0.0);
@@ -488,7 +508,10 @@ fn boost_definitions(
     }
     for (source, entry) in corpus.sources.iter().enumerate() {
         for (path, slots) in entry.index.file_slots() {
-            if !under_prefix(path, entry.path_prefix) || !stem_ok(&file_stem(path).to_lowercase()) {
+            if !under_prefix(path, entry.path_prefix)
+                || !stem_ok(&file_stem(path).to_lowercase())
+                || is_doc_path(path)
+            {
                 continue;
             }
             for &slot in slots {
@@ -532,14 +555,32 @@ fn boost_stem_matches(corpus: &Corpus<'_>, scores: &mut Scores, query: &str, max
     }
 }
 
-/// Semble `rerank_topk`: path penalties, then a greedy pass halving each further chunk of an already-picked file.
+/// Semble `rerank_topk`: path penalties, then a greedy pass discounting each further chunk of an already-picked file.
+/// Beyond Semble, docs beside code weigh [`DOC_IN_CODE_PENALTY`], and a corpus without code keeps docs whole and
+/// discounts further sections less.
 fn rerank_topk(corpus: &Corpus<'_>, scores: &Scores, top_k: usize, penalise_paths: bool) -> Vec<(Key, f64)> {
+    let corpus_has_code = corpus.has_code();
+    let decay = if corpus_has_code {
+        SATURATION_DECAY
+    } else {
+        NOTES_SATURATION_DECAY
+    };
     let mut ranked: Vec<(Key, f64, &str)> = scores
         .entries
         .iter()
         .filter_map(|(key, score)| {
             let path = &*corpus.slot(*key)?.path;
-            let factor = if penalise_paths { path_penalty(path) } else { 1.0 };
+            let factor = if !penalise_paths {
+                1.0
+            } else if is_doc_path(path) {
+                if corpus_has_code {
+                    path_penalty(path) * DOC_IN_CODE_PENALTY
+                } else {
+                    1.0
+                }
+            } else {
+                path_penalty(path)
+            };
             Some((*key, score * factor, path))
         })
         .collect();
@@ -555,7 +596,7 @@ fn rerank_topk(corpus: &Corpus<'_>, scores: &Scores, top_k: usize, penalise_path
         let mut effective = score;
         if *already >= SATURATION_THRESHOLD {
             let excess = i32::try_from(*already - SATURATION_THRESHOLD + 1).unwrap_or(i32::MAX);
-            effective *= SATURATION_DECAY.powi(excess);
+            effective *= decay.powi(excess);
         }
         selected.push((effective, key));
         *already += 1;
@@ -573,6 +614,8 @@ fn rerank_topk(corpus: &Corpus<'_>, scores: &Scores, top_k: usize, penalise_path
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use super::{SearchSource, search};
     use crate::embed::test_embedder;
     use crate::index::{FileStamp, PreparedFile, SourceIndex};
@@ -816,5 +859,69 @@ mod tests {
         }];
         let hits = search(&embedder, &sources, "Parser", 2).unwrap();
         assert_eq!(ranked(&hits).first(), Some(&("code", "b/parser.rs")));
+    }
+
+    fn rerank(source: &SourceIndex, entries: &[(u32, f64)]) -> Vec<u32> {
+        let sources = [SearchSource {
+            name: "s",
+            index: source,
+            boost: 1.0,
+            path_prefix: None,
+        }];
+        let corpus = super::Corpus { sources: &sources };
+        let mut scores = super::Scores::default();
+        for &(slot, score) in entries {
+            scores.insert((0, slot), score);
+        }
+        super::rerank_topk(&corpus, &scores, 10, true)
+            .into_iter()
+            .map(|((_, slot), _)| slot)
+            .collect()
+    }
+
+    #[test]
+    fn docs_rank_whole_alone_and_below_code_beside_it() {
+        let section = |title: &str| format!("# {title}\n\n{}\n", "retry backoff ".repeat(40));
+        let notes = index(&[
+            ("a.md", &format!("{}{}", section("One"), section("Two"))),
+            ("c.md", "token\n"),
+        ]);
+        assert_eq!(
+            notes
+                .file_slots()
+                .find(|(path, _)| *path == "a.md")
+                .map(|(_, slots)| slots.len()),
+            Some(2)
+        );
+        // Without code, a.md's second section (0.9 x 0.75) stays above c.md; Semble's halving would drop it below.
+        assert_eq!(rerank(&notes, &[(0, 1.0), (1, 0.9), (2, 0.6)]), [0, 1, 2]);
+        let mixed = index(&[("a.md", "retry\n"), ("b.rs", "fn retry() {}\n")]);
+        assert_eq!(rerank(&mixed, &[(0, 1.0), (1, 0.9)]), [1, 0]);
+    }
+
+    #[test]
+    fn definitions_in_docs_are_not_boosted() {
+        let code = index(&[
+            ("docs/parser.md", "pub struct Parser { token: u8 }\n"),
+            ("src/parser.rs", "pub struct Parser { token: u8 }\n"),
+        ]);
+        let sources = [SearchSource {
+            name: "code",
+            index: &code,
+            boost: 1.0,
+            path_prefix: None,
+        }];
+        let corpus = super::Corpus { sources: &sources };
+        let mut scores = super::Scores::default();
+        scores.insert((0, 0), 1.0);
+        super::boost_definitions(
+            &corpus,
+            &mut scores,
+            &BTreeSet::from(["Parser".to_owned()]),
+            3.0,
+            |_| true,
+        )
+        .unwrap();
+        assert_eq!(scores.entries, [((0, 0), 1.0), ((0, 1), 4.5)]);
     }
 }

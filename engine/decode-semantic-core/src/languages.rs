@@ -7,6 +7,11 @@ use crate::language_table::{EXTENSIONS, Kind};
 /// The language of `path` by its last extension, lowercased (Python `Path.suffix.lower()`), if Semble indexes it as
 /// code or docs.
 pub fn detect_language(path: &str) -> Option<&'static str> {
+    entry(path).map(|(_, language, _)| *language)
+}
+
+/// The [`EXTENSIONS`] row of `path`'s last extension.
+fn entry(path: &str) -> Option<&'static (&'static str, &'static str, Kind)> {
     let name = path.rsplit('/').next().unwrap_or(path);
     // `Path.suffix`: the text after the last dot, unless the name starts with that dot or ends with it.
     let dot = name.rfind('.').filter(|dot| *dot > 0 && *dot + 1 < name.len())?;
@@ -15,7 +20,6 @@ pub fn detect_language(path: &str) -> Option<&'static str> {
         .binary_search_by(|(ext, _, _)| (*ext).cmp(extension.as_str()))
         .ok()
         .and_then(|index| EXTENSIONS.get(index))
-        .map(|(_, language, _)| *language)
 }
 
 /// Whether `language` is documentation (Markdown, reStructuredText, …) rather than code.
@@ -23,6 +27,16 @@ pub fn is_doc_language(language: &str) -> bool {
     EXTENSIONS
         .iter()
         .any(|(_, name, kind)| *name == language && *kind == Kind::Docs)
+}
+
+/// Whether `path` has a recognized documentation extension.
+pub(crate) fn is_doc_path(path: &str) -> bool {
+    entry(path).is_some_and(|(_, _, kind)| *kind == Kind::Docs)
+}
+
+/// Whether `path` has a recognized code (non-documentation) extension.
+pub(crate) fn is_code_path(path: &str) -> bool {
+    entry(path).is_some_and(|(_, _, kind)| *kind == Kind::Code)
 }
 
 /// The grammar of a language [`grammar`] has none for, supplied by the caller: `None` leaves the language to line

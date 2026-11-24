@@ -1,6 +1,6 @@
 {
   "name": "semantic-search",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Semantic code search for the current project by default. Optional scan roots index ALL SOURCE CODE, unlike memory's cheap NOTES scans. Broad cold scans can take minutes and use substantial disk space.",
   "mcpServers": {
     "semantic-search": {
@@ -8,7 +8,7 @@
       "command": "bash",
       "args": [
         "-c",
-        "exec \"${CODEX_HOME:-$HOME/.codex}/plugins/cache/decode-plugins/semantic-search/0.1.2/scripts/server.sh\""
+        "exec \"${CODEX_HOME:-$HOME/.codex}/plugins/cache/decode-plugins/semantic-search/0.1.3/scripts/server.sh\""
       ],
       "env_vars": [
         "CODEX_HOME",

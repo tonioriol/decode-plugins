@@ -26,14 +26,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::chunking::{ChunkText, chunk_source};
 use crate::embed::Embedder;
-use crate::languages::{ExtraGrammar, detect_language};
+use crate::languages::{ExtraGrammar, detect_language, is_code_path};
 use crate::mapped_file::MappedFile;
 use crate::quant;
 use crate::ranking::file_stem;
 use crate::tokens::tokenize;
 
 /// Bump when the persisted layout or anything that shapes chunks, tokens or embeddings changes.
-const MAGIC: [u8; 8] = *b"rsidx005";
+const MAGIC: [u8; 8] = *b"rsidx006";
 const CHUNK_RECORD: usize = 16;
 const POSTING: usize = 8;
 /// Bytes of a dictionary term's length.
@@ -127,18 +127,37 @@ impl PreparedFile {
 
     /// As [`PreparedFile::new`], chunking the languages this crate has no grammar for with `extra_grammar`.
     pub fn with_grammars(embedder: &Embedder, path: &str, text: &str, extra_grammar: ExtraGrammar) -> Self {
-        let chunks = chunk_source(text, detect_language(path), extra_grammar);
+        let language = detect_language(path);
+        let chunks = chunk_source(text, language, extra_grammar);
+        let breadcrumbs = if language == Some("markdown") {
+            markdown_breadcrumbs(text, &chunks)
+        } else {
+            Vec::new()
+        };
         let terms = chunks
             .iter()
-            .map(|chunk| {
+            .enumerate()
+            .map(|(i, chunk)| {
+                let mut enriched = enrich_for_bm25(&chunk.content, path);
+                if let Some(crumb) = breadcrumbs.get(i).filter(|c| !c.is_empty()) {
+                    enriched.push(' ');
+                    enriched.push_str(crumb);
+                }
                 let mut counts = BTreeMap::new();
-                for token in tokenize(&enrich_for_bm25(&chunk.content, path)) {
+                for token in tokenize(&enriched) {
                     *counts.entry(token).or_insert(0) += 1;
                 }
                 counts
             })
             .collect();
-        let contents: Vec<String> = chunks.iter().map(|chunk| chunk.content.clone()).collect();
+        let contents: Vec<String> = chunks
+            .iter()
+            .enumerate()
+            .map(|(i, chunk)| match breadcrumbs.get(i).filter(|c| !c.is_empty()) {
+                Some(crumb) => format!("{crumb}\n{}", chunk.content),
+                None => chunk.content.clone(),
+            })
+            .collect();
         let vectors = embedder.embed(&contents);
         Self {
             chunks,
@@ -164,6 +183,86 @@ impl PreparedFile {
                     .is_some()
             })
     }
+}
+
+/// For each Markdown chunk, the `" > "`-joined chain of active ATX headings strictly above `chunk.start_line`.
+/// Skips fenced code blocks so comments inside code snippets are never mistaken for headings.
+fn markdown_breadcrumbs(source: &str, chunks: &[ChunkText]) -> Vec<String> {
+    if chunks.is_empty() {
+        return Vec::new();
+    }
+    let mut headings: Vec<(u32, u8, &str)> = Vec::new();
+    let mut fence: Option<(u8, usize)> = None;
+    for (idx, raw_line) in source.lines().enumerate() {
+        let line_no = u32::try_from(idx + 1).unwrap_or(u32::MAX);
+        let trimmed = raw_line.trim_start_matches(' ');
+        let indent = raw_line.len() - trimmed.len();
+        if indent <= 3 {
+            let first = trimmed.as_bytes().first().copied().unwrap_or(0);
+            if first == b'`' || first == b'~' {
+                let run = trimmed.bytes().take_while(|&b| b == first).count();
+                if run >= 3 {
+                    match fence {
+                        None => {
+                            if first == b'~' || !trimmed[run..].contains('`') {
+                                fence = Some((first, run));
+                            }
+                            continue;
+                        }
+                        Some((ch, len)) if ch == first && run >= len && trimmed[run..].trim().is_empty() => {
+                            fence = None;
+                            continue;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        if fence.is_some() || indent > 3 {
+            continue;
+        }
+        let hashes = trimmed.bytes().take_while(|&b| b == b'#').count();
+        if !(1..=6).contains(&hashes) {
+            continue;
+        }
+        let rest = &trimmed[hashes..];
+        if !rest.is_empty() && !rest.starts_with(' ') && !rest.starts_with('\t') {
+            continue;
+        }
+        let title = rest.trim().trim_end_matches('#').trim();
+        if !title.is_empty() {
+            headings.push((line_no, hashes as u8, title));
+        }
+    }
+
+    let mut stack: Vec<(u8, &str)> = Vec::new();
+    let mut next_heading = 0;
+    let mut out = Vec::with_capacity(chunks.len());
+    for chunk in chunks {
+        while let Some(&(ln, level, title)) = headings.get(next_heading) {
+            if ln >= chunk.start_line {
+                break;
+            }
+            while stack.last().is_some_and(|&(l, _)| l >= level) {
+                stack.pop();
+            }
+            stack.push((level, title));
+            next_heading += 1;
+        }
+        if stack.is_empty() {
+            out.push(String::new());
+        } else {
+            let mut joined = String::new();
+            for (i, &(_, title)) in stack.iter().enumerate() {
+                if i > 0 {
+                    joined.push_str(" > ");
+                }
+                joined.push_str(title);
+            }
+            out.push(joined);
+        }
+    }
+    out
 }
 
 /// Semble `enrich_for_bm25`: the chunk plus its file stem twice and its last three folder names.
@@ -234,6 +333,7 @@ struct Overlay {
 pub struct SourceIndex {
     dim: usize,
     files: BTreeMap<Arc<str>, IndexedFile>,
+    code_files: usize,
     slots: Vec<Option<Slot>>,
     /// Each slot's BM25 document length (its token count), dense for the BM25 loop; 0 once removed, which no slot
     /// in a posting list has while live.
@@ -378,6 +478,7 @@ impl SourceIndex {
         Self {
             dim,
             files: BTreeMap::new(),
+            code_files: 0,
             slots: Vec::new(),
             base: None,
             overlay: Arc::default(),
@@ -410,6 +511,11 @@ impl SourceIndex {
     /// How many chunks are indexed.
     pub fn chunk_count(&self) -> usize {
         self.live
+    }
+
+    /// Whether any indexed file in this source is a code (non-documentation) file.
+    pub(crate) fn has_code(&self) -> bool {
+        self.code_files > 0
     }
 
     fn base_chunks(&self) -> u32 {
@@ -463,6 +569,9 @@ impl SourceIndex {
             self.total_length += u64::from(length);
             slots.push(slot);
         }
+        if is_code_path(&path) {
+            self.code_files += 1;
+        }
         self.files.insert(path, IndexedFile { stamp, slots });
     }
 
@@ -471,6 +580,9 @@ impl SourceIndex {
         let Some(file) = self.files.remove(path) else {
             return;
         };
+        if is_code_path(path) {
+            self.code_files -= 1;
+        }
         let first = self.base_chunks();
         for slot in file.slots {
             if self.slots.get_mut(slot as usize).and_then(Option::take).is_none() {
@@ -847,6 +959,9 @@ impl SourceIndex {
                 slots.push(u32::try_from(index.slots.len()).unwrap_or(u32::MAX));
                 index.slots.push(Some(slot));
             }
+            if is_code_path(&path) {
+                index.code_files += 1;
+            }
             index.files.insert(
                 path,
                 IndexedFile {
@@ -938,7 +1053,7 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use super::{Blob, FileStamp, PreparedFile, SourceIndex, enrich_for_bm25};
+    use super::{Blob, FileStamp, PreparedFile, SourceIndex, enrich_for_bm25, markdown_breadcrumbs};
     use crate::ChunkText;
     use crate::embed::test_embedder;
 
@@ -1172,5 +1287,39 @@ mod tests {
     fn enriches_with_stem_twice_and_last_three_folders() {
         assert_eq!(enrich_for_bm25("x", "a/b/c/d/file.rs"), "x file file b c d");
         assert_eq!(enrich_for_bm25("x", "file.d.ts"), "x file.d file.d ");
+    }
+
+    #[test]
+    fn counts_code_files_through_upsert_remove_and_reopen() {
+        let mut index = SourceIndex::new(WORDS.len());
+        add(&mut index, "notes.md", "alpha\n");
+        assert!(!index.has_code());
+        add(&mut index, "a.py", "alpha\n");
+        add(&mut index, "a.py", "beta\n");
+        add(&mut index, "b.py", "beta\n");
+        index.remove("a.py");
+        index.remove("missing.py");
+        assert!(index.has_code());
+        assert!(
+            SourceIndex::open(Arc::new(bytes(&index)), WORDS.len())
+                .unwrap()
+                .has_code()
+        );
+        index.remove("b.py");
+        assert!(!index.has_code());
+    }
+
+    #[test]
+    fn markdown_breadcrumbs_follow_the_heading_chain_and_skip_fenced_code() {
+        let source = "# Guide\n## Setup\ntext\n```sh\n# not a heading\n```\n### Linux\nmore\n## Usage\nend\n";
+        let chunk = |line: u32| ChunkText {
+            content: String::new(),
+            start_line: line,
+            end_line: line,
+        };
+        assert_eq!(
+            markdown_breadcrumbs(source, &[chunk(1), chunk(3), chunk(8), chunk(10)]),
+            ["", "Guide > Setup", "Guide > Setup > Linux", "Guide > Usage"]
+        );
     }
 }
