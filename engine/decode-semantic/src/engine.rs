@@ -16,7 +16,7 @@ use sha2::{Digest, Sha256};
 
 use crate::files::Ignores;
 use crate::model::MODEL_REVISION;
-use crate::watch::Watch;
+use decode_semantic_core::Watch;
 
 /// One search result, with an absolute path.
 #[derive(Debug, Clone, PartialEq)]

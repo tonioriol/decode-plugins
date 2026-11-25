@@ -1,7 +1,7 @@
 [package]
 name = "decode-semantic"
 description = "Command-line semantic code search and a stdio MCP server over decode-semantic-core."
-version = "0.1.4"
+version = "0.1.5"
 edition = "2024"
 rust-version = "1.89"
 license = "MIT"
@@ -33,18 +33,11 @@ name = "decode-semantic"
 path = "src/main.rs"
 
 [dependencies]
-decode-semantic-core = { path = "../decode-semantic-core", version = "0.1.4" }
-ignore = { workspace = true }
+decode-semantic-core = { path = "../decode-semantic-core", version = "0.1.5" }
 serde_json = "1"
 sha2 = "0.11"
 tempfile = "3"
 ureq = "2"
 
-[target.'cfg(target_os = "macos")'.dependencies]
-kqueue = { workspace = true }
-
-[target.'cfg(target_os = "linux")'.dependencies]
-inotify = { workspace = true }
-
 [dev-dependencies]
-decode-semantic-core = { path = "../decode-semantic-core", version = "0.1.4", features = ["test-util"] }
+decode-semantic-core = { path = "../decode-semantic-core", version = "0.1.5", features = ["test-util"] }

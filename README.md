@@ -2,7 +2,7 @@
 
 Search by meaning for coding agents. One local engine, two plugins, for Claude Code, Codex, OpenCode and Cursor. No API key; nothing leaves your machine.
 
-- **Search** (`semantic-search`): a `project_search` tool that finds code by meaning and returns file, line and snippet. The engine started as a Rust port of [MinishLab Semble](https://github.com/MinishLab/semble) and has been improved since. On real code, notes and past chats it answers warm searches 3.3–4.0× faster than Python Semble 0.7.3 with under half the peak memory (build just before v0.1.2), and scores NDCG@10 0.854 on Semble's own benchmark against Semble's 0.855 (v0.1.3). [Benchmark](bench/semantic).
+- **Search** (`semantic-search`): a `project_search` tool that finds code by meaning and returns file, line and snippet. The engine started as a Rust port of [MinishLab Semble](https://github.com/MinishLab/semble) and has been improved since. On real code, notes and past chats it answers warm searches 3.3–4.0× faster than Python Semble 0.7.3 with under half the peak memory (build just before v0.1.2), and on Semble's own benchmark scores NDCG@10 0.8633 against Semble's 0.8515 on 42 repositories used while tuning, and 0.8723 against 0.8611 on 21 held back (v0.1.5). [Benchmark](bench/semantic).
 - **Memory** (`memory`), built on Search: one note per topic in `memory/`, a `search` tool over `memory/` and `docs/`, a `search_chats` tool over your past sessions, and hooks that show matching notes at session start and remind the agent to update them. 25 of 30 past-work questions answered right, vs 17 from raw transcripts, with 2.5× fewer tokens. [Benchmark](bench/memory). Since v0.1.3 the note search ranks better too: NDCG@10 0.68 → 0.80 on our note questions, 0.78 → 0.86 on a blind holdout ([details](bench/semantic#notes-ranking)).
 
 Overview: [tonioriol.github.io/decode-semantic](https://tonioriol.github.io/decode-semantic/).
@@ -36,7 +36,7 @@ Codex ignores plugin dependencies, so install both. The search tools are pre-app
 ## OpenCode
 
 ```sh
-git clone --branch v0.1.4 https://github.com/tonioriol/decode-plugins.git "$HOME/decode-plugins"
+git clone --branch v0.1.5 https://github.com/tonioriol/decode-plugins.git "$HOME/decode-plugins"
 ```
 
 1. Merge [opencode-v1.json](clients/opencode/opencode-v1.json) (OpenCode 1.x) or [opencode-v2.json](clients/opencode/opencode-v2.json) (2.x) into `~/.config/opencode/opencode.json`, or `opencode.json` in the project. Replace `/absolute/path/to/decode-plugins` with the clone path.

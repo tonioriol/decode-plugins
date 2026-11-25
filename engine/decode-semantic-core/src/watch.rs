@@ -10,10 +10,10 @@ use std::io;
 use std::os::unix::fs::MetadataExt as _;
 use std::path::{Path, PathBuf};
 
-use decode_semantic_core::{Exclusions, FileStamp};
 use ignore::gitignore::gitconfig_excludes_path;
 
 use crate::files::{self, CUSTOM_IGNORES, Ignores};
+use crate::{Exclusions, FileStamp};
 
 type Identity = (u64, u64);
 type Listing = BTreeMap<String, FileStamp>;
@@ -175,19 +175,23 @@ impl Coverage {
     }
 }
 
+/// Proof that a folder's listing is unchanged: a kernel queue on everything the listing depends on.
 #[derive(Debug)]
-pub(crate) struct Watch {
+pub struct Watch {
     queue: platform::Queue,
     root: Identity,
     rules: Rules,
 }
 
 impl Watch {
-    pub(crate) fn unchanged(&mut self, meta: &Metadata) -> bool {
+    /// Whether nothing the listing depends on changed since it was taken; `meta` is the root's current metadata.
+    pub fn unchanged(&mut self, meta: &Metadata) -> bool {
         self.root == identity(meta) && self.rules.unchanged() && self.queue.empty()
     }
 
-    pub(crate) fn list(
+    /// [`files::list`] of `root`, with a watch when every path it depends on could be armed and the listing taken
+    /// under the armed watches matches the one before.
+    pub fn list(
         root: &Path,
         exclusions: &Exclusions,
         docs_only: bool,

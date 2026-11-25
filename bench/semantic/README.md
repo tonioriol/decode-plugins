@@ -24,11 +24,23 @@ Python Semble 0.7.3 against Decode Semantic, 2026-11-24. Both run as their own s
 - Cold: empty index folder, spawn the server, wall time until the first answer. Warm: 100 searches after a warm-up pass. Memory is the macOS physical footprint (Activity Monitor's "Memory") summed over the process tree. Idle is measured 3 s after the last search.
 - Python was run as `semble[mcp]==0.7.3` with `--content code docs config` on code and `--content docs` on notes and chats.
 - Warm search favours Python slightly: Decode Semantic checks the folder for changes on every search, inside its timings, while Python's server skips revalidation for a while.
-- This driver reads private data and is not in this folder. Speed was not re-measured on v0.1.3, which changes ranking only; the speed check made while developing it, on two corpora, moved warm search from 0.851 to 0.863 ms (notes) and from 0.502 to 0.523 ms (abseil), within run-to-run noise.
+- This driver reads private data and is not in this folder. Speed was not re-measured on v0.1.3 or later; the speed check made while developing it, on two corpora, moved warm search from 0.851 to 0.863 ms (notes) and from 0.502 to 0.523 ms (abseil), within run-to-run noise.
 
 ## Code quality: Semble's benchmark
 
 [Semble's own benchmark](https://github.com/MinishLab/semble/tree/a1ba6c18a4b0a58a3d1a15217d64bc92678d1d9d/benchmarks), 63 repositories, 1,251 queries, 19 languages. Scoring and queries come unchanged from upstream commit `a1ba6c18`.
+
+v0.1.5 was tuned on this benchmark. The 63 repositories are split by hash, within each language, into 42 development repositories, used while tuning, and 21 held-out repositories, held back from it. Both splits score Decode Semantic v0.1.5 above Python Semble 0.7.3:
+
+| NDCG@10 | 42 development repositories | 21 held-out repositories |
+| --- | ---: | ---: |
+| Python Semble 0.7.3 | 0.8515 | 0.8611 |
+| Decode Semantic v0.1.5 | 0.8633 | 0.8723 |
+| Decode Semantic v0.1.4 (start of the tuning) | 0.8516 | 0.8586 |
+
+v0.1.5 embeds each code chunk with the words of its file path, fuses the two rankings with reciprocal rank fusion (k 40) and a 2× definition boost, and lets keyword search offer three times as many candidates.
+
+Scores on all 63 repositories, before the split was made:
 
 | NDCG@10 | Score |
 | --- | ---: |
@@ -37,23 +49,23 @@ Python Semble 0.7.3 against Decode Semantic, 2026-11-24. Both run as their own s
 | Decode Semantic v0.1.2 | 0.8514 |
 | Decode Semantic, engine of 2026-11-19 | 0.8513 |
 
-- Decode Semantic indexes docs by default. The answers label code only, so a README ranked first costs NDCG; with docs turned off it scored 0.8553 on the engine of 2026-11-19 (above Semble's 0.8547). That code-only score was not re-measured on v0.1.3.
-- Python Semble's score is from the run of 2026-11-19; the corpus, queries and Semble version are unchanged.
+- Decode Semantic indexes docs by default. The answers label code only, so a README ranked first costs NDCG; with docs turned off it scored 0.8553 on the engine of 2026-11-19 (above Semble's 0.8547). That code-only score was not re-measured on v0.1.3 or later.
+- Python Semble's all-63 score is from the run of 2026-11-19; the corpus, queries and Semble version are unchanged. Decode Semantic v0.1.5 was not scored on all 63 repositories as one set.
 
 ## Notes ranking
 
 Questions about the author's own notes, each labelled with the note (and, where known, the lines) that answers it, scored with span-aware NDCG@10. 117 development queries, used while tuning, and 83 blind holdout queries, held back from it. The notes and questions are private.
 
-| NDCG@10 | Decode Semantic v0.1.2 | Decode Semantic v0.1.3 |
-| --- | ---: | ---: |
-| 117 development queries | 0.68 | 0.80 |
-| 83 blind holdout queries | 0.78 | 0.86 |
+| NDCG@10 | Decode Semantic v0.1.2 | Decode Semantic v0.1.3 | Decode Semantic v0.1.5 |
+| --- | ---: | ---: | ---: |
+| 117 development queries | 0.68 | 0.80 | 0.80 |
+| 83 blind holdout queries | 0.78 | 0.86 | 0.86 |
 
-v0.1.3 adds each Markdown chunk's heading chain to what is embedded and keyword-indexed, weighs docs a little below code when both are indexed, and tunes ranking for folders that hold only notes.
+v0.1.3 adds each Markdown chunk's heading chain to what is embedded and keyword-indexed, weighs docs a little below code when both are indexed, and tunes ranking for folders that hold only notes. v0.1.5 changes code ranking and leaves these scores unchanged (0.8046 and 0.8598 at four digits).
 
 ## Earlier run: in-process harness, engine of 2026-11-19
 
-Full corpus, Semble 0.7.3, same model, same machine. Not re-run on v0.1.3: the full corpus needs about 3 GB of disk; the commands below repeat it. Where the sections above measure the same thing (NDCG@10, speed), they supersede this table.
+Full corpus, Semble 0.7.3, same model, same machine. Not re-run on v0.1.3 or later: the full corpus needs about 3 GB of disk; the commands below repeat it. Where the sections above measure the same thing (NDCG@10, speed), they supersede this table.
 
 | | Decode Semantic | Decode Semantic, code only | Python Semble |
 | --- | ---: | ---: | ---: |

@@ -27,11 +27,15 @@ static SYMBOL_QUERY: LazyLock<Regex> = LazyLock::new(|| {
     .expect("symbol query pattern")
 });
 
-/// Semble `_EMBEDDED_SYMBOL_RE`: PascalCase or camelCase identifiers inside a natural-language query.
+/// Semble `_EMBEDDED_SYMBOL_RE`: PascalCase or camelCase identifiers inside a natural-language query; beyond
+/// Semble, snake_case and SCREAMING_CASE ones too.
 #[expect(clippy::expect_used, reason = "a constant pattern, covered by tests")]
 static EMBEDDED_SYMBOL: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\b(?:[A-Z][a-z][a-zA-Z0-9]*[A-Z][a-zA-Z0-9]*|[a-z][a-zA-Z0-9]*[A-Z][a-zA-Z0-9]+)\b")
-        .expect("embedded symbol pattern")
+    Regex::new(concat!(
+        r"\b(?:[A-Z][a-z][a-zA-Z0-9]*[A-Z][a-zA-Z0-9]*|[a-z][a-zA-Z0-9]*[A-Z][a-zA-Z0-9]+",
+        r"|[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]*[A-Za-z0-9])\b"
+    ))
+    .expect("embedded symbol pattern")
 });
 
 /// Semble `_DEFINITION_KEYWORDS` (case-sensitive).
@@ -111,36 +115,85 @@ pub(crate) fn embedded_symbols(query: &str) -> BTreeSet<String> {
 
 /// Semble `_definition_pattern` for one symbol: the general and the SQL definition matcher.
 #[derive(Debug)]
-pub(crate) struct DefinitionPattern(Regex);
+pub(crate) struct DefinitionPattern(String);
 
 impl DefinitionPattern {
-    /// Matchers for definitions of `symbol`: Semble's general and case-insensitive SQL patterns as one regex, so
-    /// a chunk is scanned once. Python's `(?<=\s)` lookbehind becomes a consumed `\s`: only whether a match exists
-    /// is ever asked.
-    pub(crate) fn new(symbol: &str) -> Option<Self> {
-        let alternatives = |keywords: &[&str]| {
-            keywords
-                .iter()
-                .map(|k| regex::escape(k))
-                .collect::<Vec<_>>()
-                .join("|")
-        };
-        let suffix = format!(
-            r")\s+(?:[A-Za-z_][A-Za-z0-9_]*(?:\.|::))*{}(?:\s|[<({{:\[;]|$)",
-            regex::escape(symbol)
-        );
-        Regex::new(&format!(
-            r"(?m)(?:^|\s)(?:{}{suffix}|(?i:(?:^|\s)(?:{}{suffix})",
-            alternatives(DEFINITION_KEYWORDS),
-            alternatives(SQL_DEFINITION_KEYWORDS)
-        ))
-        .ok()
-        .map(Self)
+    /// Semble's general and case-insensitive SQL definition patterns for `symbol`, checked from each occurrence of
+    /// the name backwards: a keyword scan per candidate chunk, or a regex per query, cost more.
+    pub(crate) fn new(symbol: &str) -> Self {
+        Self(symbol.to_owned())
     }
 
-    /// Semble `_chunk_defines_symbol`.
+    /// Semble `_chunk_defines_symbol`: a keyword at a line start or after whitespace, then
+    /// `(?:[A-Za-z_][A-Za-z0-9_]*(?:\.|::))*` and the symbol, ending at whitespace, `<({:[;` or the end.
     pub(crate) fn defined_in(&self, content: &str) -> bool {
-        self.0.is_match(content)
+        defines(content, &self.0, DEFINITION_KEYWORDS, false)
+            || defines(
+                &content.to_ascii_lowercase(),
+                &self.0.to_ascii_lowercase(),
+                SQL_DEFINITION_KEYWORDS,
+                true,
+            )
+    }
+}
+
+/// Whether some occurrence of `symbol` in `text` ends a definition, the keywords compared ignoring ASCII case when `fold`.
+fn defines(text: &str, symbol: &str, keywords: &[&str], fold: bool) -> bool {
+    let step = symbol.chars().next().map_or(1, char::len_utf8);
+    let mut from = 0;
+    while let Some(found) = text.get(from..).and_then(|rest| rest.find(symbol)) {
+        let at = from + found;
+        if defined_at(text, at, at + symbol.len(), keywords, fold) {
+            return true;
+        }
+        from = at + step;
+    }
+    false
+}
+
+/// Whether the name at `start..end` of `text` ends at whitespace, `<({:[;` or the end, and follows a keyword
+/// and whitespace, optionally through `ident.` or `ident::` qualifiers.
+fn defined_at(text: &str, start: usize, end: usize, keywords: &[&str], fold: bool) -> bool {
+    let ends = text.get(end..).is_some_and(|after| {
+        after
+            .chars()
+            .next()
+            .is_none_or(|c| c.is_whitespace() || "<({:[;".contains(c))
+    });
+    if !ends {
+        return false;
+    }
+    let mut before = text.get(..start).unwrap_or_default();
+    loop {
+        let trimmed = before.trim_end();
+        if trimmed.len() < before.len() {
+            return keywords.iter().any(|keyword| {
+                trimmed
+                    .len()
+                    .checked_sub(keyword.len())
+                    .and_then(|at| Some((trimmed.get(..at)?, trimmed.get(at..)?)))
+                    .is_some_and(|(head, word)| {
+                        (if fold {
+                            word.eq_ignore_ascii_case(keyword)
+                        } else {
+                            word == *keyword
+                        }) && head.chars().next_back().is_none_or(char::is_whitespace)
+                    })
+            });
+        }
+        let Some(qualified) = before.strip_suffix("::").or_else(|| before.strip_suffix('.')) else {
+            return false;
+        };
+        let ident = qualified
+            .bytes()
+            .rev()
+            .take_while(|b| *b == b'_' || b.is_ascii_alphanumeric())
+            .count();
+        let head = qualified.len() - ident;
+        if ident == 0 || qualified.as_bytes().get(head).is_some_and(u8::is_ascii_digit) {
+            return false;
+        }
+        before = qualified.get(..head).unwrap_or_default();
     }
 }
 
@@ -314,13 +367,36 @@ mod tests {
 
     #[test]
     fn finds_definitions_with_keyword_and_namespace() {
-        let pattern = DefinitionPattern::new("Router").unwrap();
+        let pattern = DefinitionPattern::new("Router");
         assert!(pattern.defined_in("defmodule Phoenix.Router do"));
         assert!(pattern.defined_in("x\npub struct Router {"));
-        assert!(pattern.defined_in("create table Router;"));
+        assert!(pattern.defined_in("create table router;"));
+        assert!(pattern.defined_in("class App::Http::Router<T>"));
+        assert!(pattern.defined_in("xclass Foo; abstract class Router"));
+        assert!(pattern.defined_in("type Router"));
         assert!(!pattern.defined_in("let r = Router::new();"));
         assert!(!pattern.defined_in("structRouter {"));
         assert!(!pattern.defined_in("CLASS Router"));
+        assert!(!pattern.defined_in("class Routers {"));
+        assert!(!pattern.defined_in("class router {"));
+        assert!(!pattern.defined_in("class App-Router {"));
+        assert!(!pattern.defined_in("subclass Router"));
+        assert!(pattern.defined_in("Router(); fn \t a_1.b::Router(x)"));
+        assert!(pattern.defined_in("CREATE Table x.ROUTER;"));
+        assert!(!pattern.defined_in("CREATE  TABLE router;"));
+        assert!(!pattern.defined_in("CREATE TABLE xRouter;"));
+        assert!(!pattern.defined_in("class 1a.Router {"));
+        assert!(!pattern.defined_in("class a.::Router {"));
+        assert!(!pattern.defined_in("class a:Router {"));
+        assert!(!pattern.defined_in("Router"));
+    }
+
+    #[test]
+    fn finds_snake_case_symbols_in_prose() {
+        assert_eq!(
+            embedded_symbols("how does parse_args handle _private and MAX_SIZE"),
+            ["MAX_SIZE", "parse_args"].map(str::to_owned).into()
+        );
     }
 
     #[test]

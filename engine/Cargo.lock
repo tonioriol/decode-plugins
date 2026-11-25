@@ -239,12 +239,9 @@ dependencies = [
 
 [[package]]
 name = "decode-semantic"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "decode-semantic-core",
- "ignore",
- "inotify",
- "kqueue",
  "serde_json",
  "sha2",
  "tempfile",
@@ -253,16 +250,20 @@ dependencies = [
 
 [[package]]
 name = "decode-semantic-core"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "cc",
  "globset",
+ "ignore",
+ "inotify",
+ "kqueue",
  "memmap2",
  "model2vec-rs",
  "rayon",
  "regex",
  "serde",
  "serde_json",
+ "tempfile",
  "tokenizers",
  "tree-sitter",
  "tree-sitter-bash",

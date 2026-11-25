@@ -7,7 +7,8 @@
 //! further. `project` selects projects and `path` selects an indexed file or subtree before ranking.
 //! The folder `.` is the project itself, listed as a
 //! project (its parents' ignore files apply); a named folder is listed on its own. Indexes are built at startup and
-//! brought up to date before each search; the model is downloaded on first use.
+//! brought up to date before each search; the model is downloaded on first use. Projects are discovered in the
+//! background, so a new one shows from the search after the one that started that discovery (at once when named).
 //!
 //! ```text
 //! decode-semantic serve --storage <dir> [--index <dir>] [--tool search] [--description <text>] [--scan <dir>]...
@@ -20,7 +21,7 @@ use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
 
-use decode_semantic_core::Embedder;
+use decode_semantic_core::{Embedder, Latest};
 use serde_json::{Value, json};
 
 use crate::engine::{Engine, Found, Source, normalize};
@@ -315,6 +316,7 @@ struct Server {
     cwd: PathBuf,
     engine: Mutex<Option<Arc<Engine>>>,
     warmup: Warmup,
+    projects: Latest<Vec<Project>>,
 }
 
 impl Server {
@@ -325,7 +327,14 @@ impl Server {
             cwd,
             engine: Mutex::new(engine.map(Arc::new)),
             warmup: Warmup::default(),
+            projects: Latest::default(),
         }
+    }
+
+    /// Discovers the projects, on any thread.
+    fn discovery(&self) -> impl FnOnce() -> Vec<Project> + Send + 'static {
+        let (options, home) = (self.options.clone(), self.home.clone());
+        move || discover(&options, &home)
     }
 
     /// The engine, with the model downloaded and verified on first use.
@@ -347,10 +356,15 @@ impl Server {
         request: &Request,
         progress: &dyn Fn(&str, usize, usize),
     ) -> Result<Vec<Hit>, String> {
-        let projects = discover(&self.options, &self.home);
+        let mut projects = self.projects.get(self.discovery());
         let chosen: Vec<usize> = match request.project.as_deref() {
             Some(filter) => {
-                let chosen = filtered(&projects, filter);
+                let mut chosen = filtered(&projects, filter);
+                if chosen.is_empty() {
+                    // The project may be newer than the last discovery.
+                    projects = self.projects.now(self.discovery());
+                    chosen = filtered(&projects, filter);
+                }
                 if chosen.is_empty() {
                     let names: Vec<&str> = projects.iter().map(|project| project.name.as_str()).collect();
                     return Err(format!(
@@ -733,6 +747,49 @@ mod tests {
                 )
                 .is_err()
         );
+    }
+
+    /// Projects are discovered off the search path: a new project shows from the search after the one that started
+    /// its discovery, at once when a search names it, and a deleted one is skipped.
+    #[test]
+    fn new_projects_are_discovered_in_the_background() {
+        let home = tempfile::tempdir().unwrap();
+        let root = home.path().canonicalize().unwrap();
+        let note = "# Deploy\n\nThe deploy pipeline uploads the bundle to the bucket.\n";
+        write(&root, "code/alpha/notes/deploy.md", note);
+        let server = Server::new(options(&root, &[]), root.clone(), root.clone(), None);
+        let engine = engine(&root.join("data"));
+        let projects = |project: Option<&str>| {
+            let request = Request {
+                query: "deploy pipeline bucket".to_owned(),
+                project: project.map(str::to_owned),
+                limit: 10,
+                ..Request::default()
+            };
+            let mut names: Vec<String> = server
+                .search(&engine, &request, &|_, _, _| {})
+                .unwrap()
+                .into_iter()
+                .map(|hit| hit.project)
+                .collect();
+            names.sort();
+            names.dedup();
+            names
+        };
+        assert_eq!(projects(None), ["alpha"]);
+        server.projects.wait_refresh();
+
+        write(&root, "code/beta/notes/deploy.md", note);
+        assert_eq!(projects(None), ["alpha"]);
+        server.projects.wait_refresh();
+        assert_eq!(projects(None), ["alpha", "beta"]);
+
+        server.projects.wait_refresh();
+        write(&root, "code/gamma/notes/deploy.md", note);
+        assert_eq!(projects(Some("gamma")), ["gamma"]);
+
+        fs::remove_dir_all(root.join("code/beta")).unwrap();
+        assert_eq!(projects(None), ["alpha", "gamma"]);
     }
 
     #[test]

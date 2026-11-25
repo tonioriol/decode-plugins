@@ -33,7 +33,7 @@ use crate::ranking::file_stem;
 use crate::tokens::tokenize;
 
 /// Bump when the persisted layout or anything that shapes chunks, tokens or embeddings changes.
-const MAGIC: [u8; 8] = *b"rsidx006";
+const MAGIC: [u8; 8] = *b"rsidx007";
 const CHUNK_RECORD: usize = 16;
 const POSTING: usize = 8;
 /// Bytes of a dictionary term's length.
@@ -150,13 +150,16 @@ impl PreparedFile {
                 counts
             })
             .collect();
+        let path_words = (language != Some("markdown")).then(|| path_words(path));
         let contents: Vec<String> = chunks
             .iter()
             .enumerate()
-            .map(|(i, chunk)| match breadcrumbs.get(i).filter(|c| !c.is_empty()) {
-                Some(crumb) => format!("{crumb}\n{}", chunk.content),
-                None => chunk.content.clone(),
-            })
+            .map(
+                |(i, chunk)| match (breadcrumbs.get(i).filter(|c| !c.is_empty()), &path_words) {
+                    (Some(context), _) | (None, Some(context)) => format!("{context}\n{}", chunk.content),
+                    (None, None) => chunk.content.clone(),
+                },
+            )
             .collect();
         let vectors = embedder.embed(&contents);
         Self {
@@ -263,6 +266,16 @@ fn markdown_breadcrumbs(source: &str, chunks: &[ChunkText]) -> Vec<String> {
         }
     }
     out
+}
+
+/// Beyond Semble: the words of a non-Markdown file's path (`src/auth/token_store.rs` → `src auth token store rs`),
+/// embedded ahead of each of its chunks, so a chunk that never names its module still sits near queries about it.
+/// Markdown chunks get their heading breadcrumbs instead.
+fn path_words(path: &str) -> String {
+    path.split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Semble `enrich_for_bm25`: the chunk plus its file stem twice and its last three folder names.
@@ -1053,7 +1066,9 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use super::{Blob, FileStamp, PreparedFile, SourceIndex, enrich_for_bm25, markdown_breadcrumbs};
+    use super::{
+        Blob, FileStamp, PreparedFile, SourceIndex, enrich_for_bm25, markdown_breadcrumbs, path_words,
+    };
     use crate::ChunkText;
     use crate::embed::test_embedder;
 
@@ -1307,6 +1322,15 @@ mod tests {
         );
         index.remove("b.py");
         assert!(!index.has_code());
+    }
+
+    #[test]
+    fn code_chunks_embed_their_path_words_and_markdown_chunks_do_not() {
+        let embedder = test_embedder(WORDS).unwrap();
+        let vectors = |path: &str| PreparedFile::new(&embedder, path, "alpha\n").vectors;
+        assert_eq!(path_words("src/beta_gamma/delta.py"), "src beta gamma delta py");
+        assert_ne!(vectors("beta/gamma.py"), vectors("delta.py"));
+        assert_eq!(vectors("beta/gamma.md"), vectors("delta.md"));
     }
 
     #[test]

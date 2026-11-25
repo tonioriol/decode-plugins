@@ -21,16 +21,19 @@ use crate::ranking::{
 use crate::tokens::tokenize;
 use crate::top::TopScores;
 
-/// Semble `_RRF_K`.
-const RRF_K: f64 = 60.0;
+/// Semble `_RRF_K` is 60; 40 lets the top few ranks of either list count for more.
+const RRF_K: f64 = 40.0;
 /// BM25 term-frequency saturation (`_K1`).
 const K1: f64 = 1.5;
 /// BM25 document-length normalization (`_B`).
 const B: f64 = 0.75;
 /// Semble `_FILE_COHERENCE_BOOST_FRAC`.
 const FILE_COHERENCE_BOOST_FRAC: f64 = 0.2;
-/// Semble `_DEFINITION_BOOST_MULTIPLIER`.
-const DEFINITION_BOOST: f64 = 3.0;
+/// Semble `_DEFINITION_BOOST_MULTIPLIER` is 3; 2 keeps a definition first without burying the chunks that use it.
+const DEFINITION_BOOST: f64 = 2.0;
+/// Beyond Semble, BM25 offers three times the semantic candidates: exact-term chunks it ranks past the first pool
+/// still reach the boosts, and RRF keeps them below its top ranks.
+const BM25_POOL_FACTOR: usize = 3;
 /// Semble `_EMBEDDED_SYMBOL_BOOST_SCALE`.
 const EMBEDDED_SYMBOL_SCALE: f64 = 0.5;
 /// Semble `_STEM_BOOST_MULTIPLIER`.
@@ -177,7 +180,7 @@ pub fn search(
     // BM25 runs on one thread while the pool's others scan the vectors.
     let (semantic, bm25) = rayon::join(
         || semantic_candidates(embedder, &corpus, query, candidates),
-        || bm25_candidates(&corpus, query, candidates),
+        || bm25_candidates(&corpus, query, candidates * BM25_POOL_FACTOR),
     );
     let (semantic, bm25) = (semantic?, bm25?);
     let semantic_rrf = rrf(&semantic);
@@ -481,13 +484,27 @@ fn boost_definitions(
     unit: f64,
     stem_ok: impl Fn(&str) -> bool,
 ) -> io::Result<()> {
-    let patterns: Vec<DefinitionPattern> = names
-        .iter()
-        .filter_map(|name| DefinitionPattern::new(name))
-        .collect();
+    let patterns: Vec<DefinitionPattern> = names.iter().map(|name| DefinitionPattern::new(name)).collect();
     let names_lower: Vec<String> = names.iter().map(|name| name.to_lowercase()).collect();
+    // A definition of a plain identifier holds it as a whole BM25 token, so only chunks in its postings are read.
+    let plain = names_lower
+        .iter()
+        .all(|name| tokenize(name).first().is_some_and(|token| token == name));
+    let holders: Option<BTreeSet<Key>> = if plain {
+        let (mut bytes, mut found, mut keys) = (Vec::new(), Vec::new(), BTreeSet::new());
+        for (source, entry) in corpus.sources.iter().enumerate() {
+            for name in &names_lower {
+                found.clear();
+                entry.index.postings(name, &mut bytes, &mut found)?;
+                keys.extend(found.iter().map(|&(slot, _)| (source, slot)));
+            }
+        }
+        Some(keys)
+    } else {
+        None
+    };
     let tier = |key: Key, slot: &Slot| -> io::Result<f64> {
-        if is_doc_path(&slot.path) {
+        if is_doc_path(&slot.path) || holders.as_ref().is_some_and(|keys| !keys.contains(&key)) {
             return Ok(0.0);
         }
         let content = corpus.content(key)?;
@@ -859,6 +876,34 @@ mod tests {
         }];
         let hits = search(&embedder, &sources, "Parser", 2).unwrap();
         assert_eq!(ranked(&hits).first(), Some(&("code", "b/parser.rs")));
+    }
+
+    #[test]
+    fn bm25_offers_definitions_past_the_semantic_pool() {
+        let embedder = test_embedder(WORDS).unwrap();
+        let mut files: Vec<(String, String)> = (0..10)
+            .map(|n| {
+                (
+                    format!("calls/c{n}.py"),
+                    "x = parse_token(retry, backoff, retry, backoff)\n".to_owned(),
+                )
+            })
+            .collect();
+        files.push((
+            "lib/util.py".to_owned(),
+            "def parse_token(text):\n    return text\n".to_owned(),
+        ));
+        let files: Vec<(&str, &str)> = files.iter().map(|(p, t)| (p.as_str(), t.as_str())).collect();
+        let code = index(&files);
+        let sources = [SearchSource {
+            name: "code",
+            index: &code,
+            boost: 1.0,
+            path_prefix: None,
+        }];
+        // One hit: 5 semantic candidates and 15 from BM25, which ranks the definition below every caller.
+        let hits = search(&embedder, &sources, "how does parse_token retry with backoff", 1).unwrap();
+        assert_eq!(ranked(&hits), [("code", "lib/util.py")]);
     }
 
     fn rerank(source: &SourceIndex, entries: &[(u32, f64)]) -> Vec<u32> {

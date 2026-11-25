@@ -5,25 +5,15 @@ use std::path::Path;
 use std::time::UNIX_EPOCH;
 use std::{fs, io};
 
-use decode_semantic_core::{Exclusions, FileStamp, detect_language, is_doc_language};
 use ignore::WalkBuilder;
+
+use crate::{Exclusions, FileStamp, detect_language, in_skipped_dir, is_doc_language};
 
 /// Semble `MAX_FILE_BYTES`: a larger file is never indexed.
 pub const MAX_FILE_BYTES: u64 = 1_000_000;
 /// The most files one folder's index holds.
 pub const MAX_FILES: usize = 50_000;
-/// Dependency and build-output directories, never indexed at any depth: Semble `_DEFAULT_IGNORED_DIRS` without its
-/// hidden folders (the hidden folder rule skips those), plus `vendor`, where Go, Composer and Bundler keep copies of
-/// third-party code.
-const SKIPPED_DIRS: &[&str] = &["__pycache__", "node_modules", "venv", "dist", "build", "vendor"];
 pub(crate) const CUSTOM_IGNORES: [&str; 3] = [".rgignore", ".rooignore", ".decodeignore"];
-
-/// Whether `relative` (root-relative, `/`-separated) lies in one of [`SKIPPED_DIRS`] or a hidden folder.
-fn in_skipped_dir(relative: &str) -> bool {
-    relative
-        .split('/')
-        .any(|part| (part.starts_with('.') && part != ".") || SKIPPED_DIRS.contains(&part))
-}
 
 /// Which ignore files a listing applies.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,7 +25,7 @@ pub enum Ignores {
 }
 
 /// The files of `root` the index may hold, by root-relative `/`-separated path, with their stamps: files of a
-/// language Semble reads, at most [`MAX_FILE_BYTES`] long, outside hidden folders and [`SKIPPED_DIRS`], not ignored
+/// language Semble reads, at most [`MAX_FILE_BYTES`] long, outside hidden folders and [`crate::SKIPPED_DIRS`], not ignored
 /// (`.gitignore` within the nearest Git repository; `.ignore`, `.rgignore`, `.rooignore`, `.decodeignore`; from
 /// parents too with [`Ignores::WithParents`]) and not matching `exclusions`. Only documentation files when
 /// `docs_only`. Symbolic links are not followed.
