@@ -239,7 +239,7 @@ dependencies = [
 
 [[package]]
 name = "decode-semantic"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "decode-semantic-core",
  "serde_json",
@@ -250,7 +250,7 @@ dependencies = [
 
 [[package]]
 name = "decode-semantic-core"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "cc",
  "globset",

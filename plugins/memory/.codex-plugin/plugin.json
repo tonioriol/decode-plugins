@@ -1,14 +1,14 @@
 {
   "name": "memory",
-  "version": "0.1.5",
-  "description": "Durable project notes, recall, and lifecycle reminders. Optional scan roots perform cheap cross-project NOTES scans (memory/ and docs/ only), not source-code indexing.",
+  "version": "0.1.6",
+  "description": "Durable project notes, recall, and lifecycle reminders. Optional scan roots perform cheap cross-project NOTES scans (memory/ only), not source-code indexing.",
   "mcpServers": {
     "memory": {
       "type": "stdio",
       "command": "bash",
       "args": [
         "-c",
-        "exec \"${CODEX_HOME:-$HOME/.codex}/plugins/cache/decode-plugins/memory/0.1.5/scripts/server.sh\""
+        "exec \"${CODEX_HOME:-$HOME/.codex}/plugins/cache/decode-plugins/memory/0.1.6/scripts/server.sh\""
       ],
       "env_vars": [
         "CODEX_HOME",
@@ -32,7 +32,7 @@
       "command": "bash",
       "args": [
         "-c",
-        "exec env DECODE_PLUGINS_HARNESS=codex \"${CODEX_HOME:-$HOME/.codex}/plugins/cache/decode-plugins/memory/0.1.5/scripts/chats-server.sh\""
+        "exec env DECODE_PLUGINS_HARNESS=codex \"${CODEX_HOME:-$HOME/.codex}/plugins/cache/decode-plugins/memory/0.1.6/scripts/chats-server.sh\""
       ],
       "env_vars": [
         "CODEX_HOME",

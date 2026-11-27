@@ -1,6 +1,6 @@
 {
   "name": "memory",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Durable project notes, recall, and lifecycle reminders.",
   "author": {
     "name": "tonioriol"
@@ -9,13 +9,13 @@
     "scan_root": {
       "type": "directory",
       "title": "Additional project root",
-      "description": "Optional parent folder for cheap cross-project NOTES scans (memory/ and docs/ only), not source-code indexing. Leave empty for current-project-only recall.",
+      "description": "Optional parent folder for cheap cross-project NOTES scans (memory/ only), not source-code indexing. Leave empty for current-project-only recall.",
       "default": ""
     },
     "scan_root_2": {
       "type": "directory",
       "title": "Second additional project root",
-      "description": "Optional parent folder for cheap cross-project NOTES scans (memory/ and docs/ only), not source-code indexing. Leave empty for current-project-only recall.",
+      "description": "Optional parent folder for cheap cross-project NOTES scans (memory/ only), not source-code indexing. Leave empty for current-project-only recall.",
       "default": ""
     }
   },

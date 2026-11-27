@@ -29,7 +29,7 @@ listing gives recency. Update the matching feature when one exists. Store
 memory in the root workspace, not a reclone or worktree.
 
 The memory plugin's `search` MCP tool searches the current project's `memory/`
-and, ranked lower, `docs/`, by meaning. Additional projects are included only
+notes by meaning (not `artifacts/` evidence folders, `docs/` or code). Additional projects are included only
 when scan roots are configured. Pass `workspace` so the current project ranks
 first, or `project` to search only one configured project.
 

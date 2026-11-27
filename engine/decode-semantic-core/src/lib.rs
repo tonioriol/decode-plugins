@@ -60,7 +60,7 @@ pub use mapped_file::MappedFile;
 pub use ranking::resolve_alpha;
 pub use rerank::Reranker;
 pub use search::{Hit, SearchSource, search};
-pub use skipped::{SKIPPED_DIRS, in_skipped_dir};
+pub use skipped::{SKIPPED_DIRS, in_skipped_dir, is_unindexed};
 pub use sync::{Changes, Exclusions, changes};
 pub use tokens::tokenize;
 pub use top::{TopScores, score_order, top_by_score};

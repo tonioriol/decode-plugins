@@ -7,7 +7,7 @@ use std::{fs, io};
 
 use ignore::WalkBuilder;
 
-use crate::{Exclusions, FileStamp, detect_language, in_skipped_dir, is_doc_language};
+use crate::{Exclusions, FileStamp, detect_language, is_doc_language, is_unindexed};
 
 /// Semble `MAX_FILE_BYTES`: a larger file is never indexed.
 pub const MAX_FILE_BYTES: u64 = 1_000_000;
@@ -52,6 +52,13 @@ pub(crate) fn list_observing(
     for name in CUSTOM_IGNORES {
         builder.add_custom_ignore_filename(name);
     }
+    // A folder no index holds is neither read nor watched.
+    let walked = root.to_path_buf();
+    builder.filter_entry(move |entry| {
+        entry.path().strip_prefix(&walked).map_or(true, |relative| {
+            !is_unindexed(&walked, &relative.to_string_lossy().replace('\\', "/"))
+        })
+    });
     let walker = builder.build();
     let mut files = BTreeMap::new();
     for entry in walker {
@@ -66,9 +73,6 @@ pub(crate) fn list_observing(
             continue;
         };
         let relative = relative.to_string_lossy().replace('\\', "/");
-        if in_skipped_dir(&relative) {
-            continue;
-        }
         let Some(language) = detect_language(&relative) else {
             continue;
         };

@@ -13,7 +13,7 @@ import unittest
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / '.agent-runs' / 'launcher-tests'
 FIXTURES.mkdir(parents=True, exist_ok=True)
-RELEASE = 'v0.1.5'
+RELEASE = 'v0.1.6'
 ASSET = 'decode-semantic-aarch64-apple-darwin'
 FAKE_BINARY = b'#!/usr/bin/env python3\nimport json,sys\nprint(json.dumps(sys.argv[1:]))\n'
 # Writes the release files the way gh (into --dir) or curl (to -o) would, logging each call.
@@ -135,7 +135,7 @@ class Launchers(unittest.TestCase):
         self.assertEqual(self.values(args, '--storage'), [str(self.data / 'memory')])
         self.assertNotIn('--index', args)
         self.assertIn('--docs-only', args)
-        self.assertEqual(self.values(args, '--folder'), ['memory', 'docs=0.5'])
+        self.assertEqual(self.values(args, '--folder'), ['memory'])
         elsewhere = self.root / 'elsewhere'
         args = self.args('memory', DECODE_PLUGINS_DATA=str(elsewhere), CLAUDE_PLUGIN_DATA=str(self.root / 'other'))
         self.assertEqual(self.values(args, '--storage'), [str(elsewhere / 'memory')])

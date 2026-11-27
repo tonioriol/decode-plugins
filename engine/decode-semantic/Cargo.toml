@@ -1,7 +1,7 @@
 [package]
 name = "decode-semantic"
 description = "Command-line semantic code search and a stdio MCP server over decode-semantic-core."
-version = "0.1.5"
+version = "0.1.6"
 edition = "2024"
 rust-version = "1.89"
 license = "MIT"
@@ -33,11 +33,11 @@ name = "decode-semantic"
 path = "src/main.rs"
 
 [dependencies]
-decode-semantic-core = { path = "../decode-semantic-core", version = "0.1.5" }
+decode-semantic-core = { path = "../decode-semantic-core", version = "0.1.6" }
 serde_json = "1"
 sha2 = "0.11"
 tempfile = "3"
 ureq = "2"
 
 [dev-dependencies]
-decode-semantic-core = { path = "../decode-semantic-core", version = "0.1.5", features = ["test-util"] }
+decode-semantic-core = { path = "../decode-semantic-core", version = "0.1.6", features = ["test-util"] }
